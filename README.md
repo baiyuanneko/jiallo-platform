@@ -181,3 +181,7 @@ PR/Issues welcome! 欢迎 PR 和 Issues!
 If you find security issues, we recommend you to contact me privately at baiyang-lzy@outlook.com instead of publishing on the issue section. Thanks!
 
 如果你发现本项目存在安全漏洞，建议是发往我的邮箱 baiyang-lzy@outlook.com 而不是直接发布在 Issues 区。感谢！
+
+## Special Thanks
+
+See [THANKING.md](./THANKING.md).
