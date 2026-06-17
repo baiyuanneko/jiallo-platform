@@ -5,6 +5,8 @@ A unified AI platform based on Spring AI Alibaba, Antd Design and other popular 
 
 基于 Spring AI Alibaba、Antd Design 等流行技术开发的统一 AI 平台。目前提供了 Agentic Chat UI 和 RAG 功能。同时适合个人部署和作为 SaaS 部署。
 
+![screenshot](./assets/screenshot-20260618.png)
+
 > Additional Notice: Currently the interface only supports Chinese (Simplified) as interface language.
 > 
 > 提醒：目前界面仅支持中文（简体）作为界面语言。
