@@ -1,0 +1,14 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+HELP.md
+*.log
+
+# 防止本地调试用的覆盖配置进入镜像
+src/main/resources/application-local.yml
+src/main/resources/application-dev.yml

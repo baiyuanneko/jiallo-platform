@@ -1,0 +1,12 @@
+{
+  "name": "Jiallo Chat",
+  "short_name": "Jiallo Chat",
+  "start_url": "/app/agentic-chat-ui",
+  "scope": "/app/agentic-chat-ui/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1677ff",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "any", "type": "image/png", "purpose": "any" }
+  ]
+}

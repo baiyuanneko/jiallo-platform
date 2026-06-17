@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: jiallo
+  devtools:
+    restart:
+      enabled: false
+    livereload:
+      enabled: false
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:3306}/${MYSQL_DATABASE}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 600000
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      database: 0
+      timeout: 3000ms
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  http:
+    converters:
+      preferred-json-mapper: jackson
+
+server:
+  port: 8233
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: is_del
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+myapp:
+  user:
+    emailVerification: ${EMAIL_VERIFICATION:true}
+    redisCacheTime: 86400
+    allowEmailBinding: true
+  aes:
+    key: ${AES_KEY}
+  identifier: jiallo
+  name: Jiallo
+  initialAdmin:
+    username: ${INITIAL_ADMIN_USERNAME:admin}
+    password: ${INITIAL_ADMIN_PASSWORD}
+  clientMode:
+    isSsoClient: false
+    externalSsoAdminUserId: ${SSO_EXTERNAL_ADMIN_USER_ID:}
+    ssoServerInvokeUrl: ${SSO_SERVER_INVOKE_URL:}
+    ssoClientUniqueName: ${SSO_CLIENT_UNIQUE_NAME:}
+    ssoClientSecret: ${SSO_CLIENT_SECRET:}
+
+minio:
+  endpoint: ${MINIO_ENDPOINT}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  bucket-name: ${MINIO_BUCKET:jiallo}
+  auto-create-bucket: true
+
+jwt:
+  secret: ${JWT_SECRET}
+  blacklist-prefix: "jwt:blacklist:"
+
+  access-token-expiration: 3600000
+  refresh-token-expiration: 604800000
+  access-token-expiration-sec: 3600
+  refresh-token-expiration-sec: 604800
+
+bocha:
+  api-key: ${BOCHA_API_KEY}
+
+web-fetch:
+  timeout: 15000
+  max-content-length: 10000
+  max-response-body-size: 524288
+  max-links: 20
+  user-agent: ""

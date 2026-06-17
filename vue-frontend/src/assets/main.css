@@ -1,0 +1,110 @@
+/* ==================== 全局重置 ==================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Sarasa UI SC', 'Noto Sans CJK SC', 'Adwaita Sans', sans-serif;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* ==================== 背景图样式 ==================== */
+
+/* 背景容器 */
+.bg-carousel-container {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景图层 */
+.bg-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+}
+
+.bg-layer.active {
+  opacity: 1;
+}
+
+/* 背景遮罩层 */
+.bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ==================== 页面切换过渡动画 ==================== */
+
+/* 淡入淡出动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 滑动淡入动画 */
+.slide-fade-enter-active {
+  transition: all 0.15s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.15s ease-in;
+}
+
+.slide-fade-enter-from {
+  transform: translateX(20px);
+  opacity: 0;
+}
+
+.slide-fade-leave-to {
+  transform: translateX(-20px);
+  opacity: 0;
+}
+
+/* ==================== 淡入动画 ==================== */
+
+.fade-in-up {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity 0.6s ease-out,
+    transform 0.6s ease-out;
+}
+
+.fade-in-up.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 带延迟的淡入 */
+.fade-in-up-delay {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity 0.6s ease-out 0.3s,
+    transform 0.6s ease-out 0.3s;
+}
+
+.fade-in-up-delay.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
