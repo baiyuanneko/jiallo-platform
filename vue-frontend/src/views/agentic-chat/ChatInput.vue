@@ -303,12 +303,15 @@ function triggerFileUpload() {
   fileInputRef.value?.click()
 }
 
-function handleFileChange(e: Event) {
-  const target = e.target as HTMLInputElement
-  const files = target.files
-  if (!files?.length) return
+/**
+ * 将文件读取为 data URL 并加入待发送图片列表，忽略非图片文件并给出提示。
+ * 粘贴、拖拽与「上传图片」按钮共用此逻辑。
+ */
+function addFilesAsPendingImages(files: File[]) {
+  const images = files.filter((f) => f.type.startsWith('image/'))
+  const others = files.filter((f) => !f.type.startsWith('image/'))
 
-  for (const file of files) {
+  for (const file of images) {
     const reader = new FileReader()
     reader.onload = () => {
       pendingImages.value.push(reader.result as string)
@@ -316,7 +319,75 @@ function handleFileChange(e: Event) {
     reader.readAsDataURL(file)
   }
 
+  if (others.length && files.length && !images.length) {
+    message.warning('暂仅支持图片附件')
+  } else if (others.length) {
+    message.warning(`已忽略 ${others.length} 个非图片文件`)
+  }
+}
+
+function handleFileChange(e: Event) {
+  const target = e.target as HTMLInputElement
+  const files = target.files
+  if (!files?.length) return
+
+  addFilesAsPendingImages(Array.from(files))
   target.value = ''
+}
+
+/** 输入框粘贴：提取剪贴板中的图片作为待发送附件，放行纯文本粘贴 */
+function handlePaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items?.length) return
+
+  const fileItems: DataTransferItem[] = []
+  for (const item of items) {
+    if (item.kind === 'file') fileItems.push(item)
+  }
+  if (!fileItems.length) return
+
+  const files = fileItems
+    .map((item) => item.getAsFile())
+    .filter((f): f is File => !!f)
+  if (!files.length) return
+
+  // 含图片时阻止默认行为（避免图片被当作乱码文本插入），交由我们处理
+  if (files.some((f) => f.type.startsWith('image/'))) {
+    e.preventDefault()
+    addFilesAsPendingImages(files)
+  } else {
+    message.warning('暂仅支持粘贴图片附件')
+  }
+}
+
+// ===== 拖拽上传：用计数器避免子元素进出导致 dragleave 误判 =====
+const dragCounter = ref(0)
+const isDragOver = ref(false)
+
+function handleDragEnter(e: DragEvent) {
+  e.preventDefault()
+  dragCounter.value++
+  isDragOver.value = true
+}
+
+function handleDragOver(e: DragEvent) {
+  // 必须 preventDefault 才能在后续 drop 中接收文件
+  e.preventDefault()
+}
+
+function handleDragLeave(e: DragEvent) {
+  e.preventDefault()
+  dragCounter.value = Math.max(0, dragCounter.value - 1)
+  if (dragCounter.value === 0) isDragOver.value = false
+}
+
+function handleDrop(e: DragEvent) {
+  e.preventDefault()
+  dragCounter.value = 0
+  isDragOver.value = false
+  const files = e.dataTransfer?.files
+  if (!files?.length) return
+  addFilesAsPendingImages(Array.from(files))
 }
 
 function removePendingImage(index: number) {
@@ -347,7 +418,15 @@ function handleInput() {
           <span>放弃回复</span>
         </button>
       </div>
-      <div class="chat-input__wrapper">
+      <div
+        class="chat-input__wrapper"
+        :class="{ 'chat-input__wrapper--dragover': isDragOver }"
+        @paste="handlePaste"
+        @dragenter="handleDragEnter"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+      >
         <a-dropdown trigger="click" placement="topLeft" overlay-class-name="chat-input__popover">
           <button class="chat-input__icon-btn">
             <PlusOutlined />
@@ -738,6 +817,11 @@ function handleInput() {
 
 .chat-input__wrapper:focus-within {
   border-color: #1677ff;
+}
+
+.chat-input__wrapper--dragover {
+  border-color: #1677ff;
+  background: #e6f4ff;
 }
 
 .chat-input__file {

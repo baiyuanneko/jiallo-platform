@@ -1,0 +1,12 @@
+# Development image with hot-restart via spring-boot-devtools.
+#
+# The source tree is bind-mounted to /app at runtime (see docker-compose.dev.yml),
+# so the image itself only provides the JDK + Maven toolchain.
+# NOTE: the container runs as root and writes to the mounted target/ directory;
+# run `sudo chown -R $USER:$USER target` before building on the host again.
+FROM maven:3.9-eclipse-temurin-21
+
+WORKDIR /app
+
+# The entrypoint script lives in the bind-mounted source tree.
+ENTRYPOINT ["bash", "./docker-dev-entrypoint.sh"]
