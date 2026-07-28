@@ -1,0 +1,58 @@
+package moe.byn.bynspring21.utils;
+
+import lombok.extern.slf4j.Slf4j;
+import moe.byn.bynspring21.entity.tool.ClawToolContext;
+import moe.byn.bynspring21.exception.BynBaseException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+/**
+ * Claw-like 工作区工具类：工作区根路径为 {workspace-root}/{userId}/{sessionId}/，
+ * 所有文件路径归一化到工作区内，防止 ../ 路径穿越
+ */
+@Slf4j
+@Component
+public class ClawWorkspaceUtil {
+
+    @Value("${claw.like.workspace-root:./claw-workspace}")
+    private String workspaceRoot;
+
+    /**
+     * 解析并创建当前上下文（userId + sessionId）对应的工作区目录
+     */
+    public Path resolveCurrentWorkspace() {
+        String userId = ClawToolContext.getUserId();
+        String sessionId = ClawToolContext.getSessionId();
+        if (userId == null || sessionId == null) {
+            throw new BynBaseException("Claw-like 工具上下文未初始化");
+        }
+        Path workspace = Paths.get(workspaceRoot).toAbsolutePath().normalize()
+                .resolve(userId).resolve(sessionId).normalize();
+        try {
+            Files.createDirectories(workspace);
+        } catch (IOException e) {
+            log.error("创建 Claw-like 工作区目录失败: {}", workspace, e);
+            throw new BynBaseException("创建工作区目录失败");
+        }
+        return workspace;
+    }
+
+    /**
+     * 将工具传入的相对路径归一化到工作区内，越界路径直接抛异常
+     */
+    public Path resolveInWorkspace(Path workspace, String relativePath) {
+        if (relativePath == null || relativePath.isBlank() || ".".equals(relativePath)) {
+            return workspace;
+        }
+        Path resolved = workspace.resolve(relativePath).normalize().toAbsolutePath();
+        if (!resolved.startsWith(workspace)) {
+            throw new BynBaseException("路径越界：只允许访问当前工作区目录内的文件");
+        }
+        return resolved;
+    }
+}

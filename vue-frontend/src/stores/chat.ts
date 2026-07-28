@@ -150,6 +150,10 @@ export const useChatStore = defineStore('chat', () => {
 const selectedRagChunk = ref<RagSearchResultItem | null>(null)
 const selectedRagReferences = ref<{ turnIndex: number; items: RagSearchResultItem[] } | null>(null)
 const ragModuleAuthorized = ref(false)
+const clawLikeAuthorized = ref(false)
+const isClawLikeMode = ref(false)
+/** 进入 claw-like 模式前的 agentType，退出时恢复 */
+let agentTypeBeforeClawLike: AgentType | null = null
   const sidebarVisible = ref(true)
   const sidebarCollapsed = ref(false)
 
@@ -170,9 +174,15 @@ const ragModuleAuthorized = ref(false)
   const ragLibraryIds = computed(() => getActiveTab()?.ragLibraryIds ?? [])
 
   const filteredSessions = computed(() => {
-    if (!searchKeyword.value.trim()) return sessions.value
+    // claw-like 会话与普通会话互相隔离
+    const modeFiltered = sessions.value.filter((s) =>
+      isClawLikeMode.value
+        ? s.agentType === AgentType.CLAW_LIKE
+        : s.agentType !== AgentType.CLAW_LIKE,
+    )
+    if (!searchKeyword.value.trim()) return modeFiltered
     const kw = searchKeyword.value.toLowerCase()
-    return sessions.value.filter((s) => s.sessionName.toLowerCase().includes(kw))
+    return modeFiltered.filter((s) => s.sessionName.toLowerCase().includes(kw))
   })
 
   async function loadSessions(loadMore = false) {
@@ -243,6 +253,7 @@ const ragModuleAuthorized = ref(false)
         availableAgentTypes.value = res.data.data || []
         // Fallback: if current agentType is not in the available list, pick the first available
         if (
+          !isClawLikeMode.value &&
           availableAgentTypes.value.length > 0 &&
           !availableAgentTypes.value.includes(currentAgentType.value)
         ) {
@@ -266,6 +277,31 @@ const ragModuleAuthorized = ref(false)
         const idx = tab.enabledTools.indexOf('rag_knowledge_base')
         if (idx >= 0) tab.enabledTools.splice(idx, 1)
       })
+    }
+  }
+
+  async function loadClawLikeAuth() {
+    try {
+      const res = await request.post('/featureModule/checkAuth', { moduleCode: 'claw_like' })
+      clawLikeAuthorized.value = res.data.data === true
+    } catch {
+      clawLikeAuthorized.value = false
+    }
+  }
+
+  function enterClawLikeMode() {
+    if (isClawLikeMode.value) return
+    isClawLikeMode.value = true
+    agentTypeBeforeClawLike = currentAgentType.value
+    currentAgentType.value = AgentType.CLAW_LIKE
+  }
+
+  function exitClawLikeMode() {
+    if (!isClawLikeMode.value) return
+    isClawLikeMode.value = false
+    if (agentTypeBeforeClawLike !== null) {
+      currentAgentType.value = agentTypeBeforeClawLike
+      agentTypeBeforeClawLike = null
     }
   }
 
@@ -515,10 +551,11 @@ const ragModuleAuthorized = ref(false)
     const vo: ChatStreamVo = {
       sessionId: tab.sessionId,
       textContent,
-      agentType: currentAgentType.value,
+      // claw-like 模式强制 agentType，工具列表由后端写死，enabledAgenticTools 传空数组
+      agentType: isClawLikeMode.value ? AgentType.CLAW_LIKE : currentAgentType.value,
       modelType: 0 as ModelType,
       modelId: tab.modelId || currentModelId.value,
-      enabledAgenticTools: tab.enabledTools,
+      enabledAgenticTools: isClawLikeMode.value ? [] : tab.enabledTools,
       enabledAgenticSkills: tab.enabledSkills,
       ragLibraryIds: ragLibraryIds.value,
     }
@@ -537,8 +574,8 @@ const ragModuleAuthorized = ref(false)
       savedEnabledSkills.value = [...tab.enabledSkills]
     }
 
-    // Save agent type for next session
-    if (rememberAgentType.value) {
+    // Save agent type for next session（claw-like 模式不污染普通模式的偏好）
+    if (rememberAgentType.value && !isClawLikeMode.value) {
       savedAgentType.value = currentAgentType.value
     }
 
@@ -1208,6 +1245,8 @@ const ragModuleAuthorized = ref(false)
     selectedRagChunk,
     selectedRagReferences,
     ragModuleAuthorized,
+    clawLikeAuthorized,
+    isClawLikeMode,
     sidebarVisible,
     sidebarCollapsed,
     reasoningEffort,
@@ -1219,6 +1258,9 @@ const ragModuleAuthorized = ref(false)
     loadModels,
     loadAgentTypes,
     loadRagModuleAuth,
+    loadClawLikeAuth,
+    enterClawLikeMode,
+    exitClawLikeMode,
     startNewSession,
     handleSidebarSingleClick,
     handleSidebarDoubleClick,

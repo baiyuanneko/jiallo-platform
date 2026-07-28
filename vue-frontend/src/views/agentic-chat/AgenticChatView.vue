@@ -47,7 +47,7 @@ function checkMobileAndCollapse() {
 }
 
 onMounted(async () => {
-  await Promise.all([chatStore.loadSessions(), chatStore.loadModels(), chatStore.loadAgentTypes(), chatStore.loadRagModuleAuth()])
+  await Promise.all([chatStore.loadSessions(), chatStore.loadModels(), chatStore.loadAgentTypes(), chatStore.loadRagModuleAuth(), chatStore.loadClawLikeAuth()])
   const sessionId = route.params.sessionId as string | undefined
   if (sessionId) {
     chatStore.handleSidebarSingleClick(sessionId)
@@ -59,7 +59,22 @@ onMounted(async () => {
   window.addEventListener('resize', checkMobileAndCollapse)
 })
 
+// claw-like 模式随路由进出；immediate 覆盖挂载场景，
+// watch 覆盖两个路由复用同一组件实例（不触发 mount/unmount）的场景
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'clawLike') {
+      chatStore.enterClawLikeMode()
+    } else {
+      chatStore.exitClawLikeMode()
+    }
+  },
+  { immediate: true },
+)
+
 onUnmounted(() => {
+  chatStore.exitClawLikeMode()
   window.removeEventListener('resize', checkMobileAndCollapse)
 })
 
@@ -93,10 +108,10 @@ watch(
     const currentPathId = route.params.sessionId as string | undefined
     if (newId && newId !== currentPathId) {
       isRouteDrivenUpdate.value = true
-      router.replace({ name: 'agenticChat', params: { sessionId: newId } })
+      router.replace({ name: route.name ?? 'agenticChat', params: { sessionId: newId } })
     } else if (!newId && currentPathId) {
       isRouteDrivenUpdate.value = true
-      router.replace({ name: 'agenticChat' })
+      router.replace({ name: route.name ?? 'agenticChat' })
     }
   },
 )
@@ -129,7 +144,7 @@ function closeSidebar() {
         <button class="agentic-chat__back-btn" @click="goBack">
           <ArrowLeftOutlined />
         </button>
-        <span class="agentic-chat__mobile-title">Agentic Chat</span>
+        <span class="agentic-chat__mobile-title">{{ chatStore.isClawLikeMode ? 'Claw-like' : 'Agentic Chat' }}</span>
       </div>
       <ChatTabBar />
       <ChatPanel />

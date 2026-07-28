@@ -26,6 +26,8 @@ services:
     environment:
       # application.yml disables devtools; re-enable hot-restart for dev.
       SPRING_DEVTOOLS_RESTART_ENABLED: "true"
+      # 开发环境启用 Flyway 自动迁移（生产默认关闭，见 docker-compose.yml）
+      FLYWAY_ENABLED: "true"
     volumes:
       - ./java-backend:/app
       - maven_repo:/root/.m2

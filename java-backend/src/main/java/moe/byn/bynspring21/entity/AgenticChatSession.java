@@ -35,7 +35,7 @@ public class AgenticChatSession extends CommonEntity<AgenticChatSession> impleme
      */
     private Integer modelType;
     /**
-     * 0为chatClient、1为reactAgent、2为digitalByn
+     * 0为chatClient、1为reactAgent、2为digitalByn、3为clawLike
      */
     private Integer agentType;
 

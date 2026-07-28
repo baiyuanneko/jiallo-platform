@@ -30,7 +30,7 @@ public class AgenticChatAppVo {
         @Schema(description = "媒体内容列表，每项为Base64编码（支持 data URL 或纯 base64）")
         private List<String> mediaContentBase64List;
 
-        @Schema(description = "Agent类型：0为chatClient、1为reactAgent、2为digitalByn", requiredMode = Schema.RequiredMode.REQUIRED)
+        @Schema(description = "Agent类型：0为chatClient、1为reactAgent、2为digitalByn、3为clawLike", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotNull(message = "agentType不能为空")
         private Integer agentType;
 

@@ -68,6 +68,12 @@ const router = createRouter({
       meta: { requiresAuth: true, standaloneLayout: true, title: 'Jiallo Chat' },
     },
     {
+      path: '/app/claw-like/:sessionId?',
+      name: 'clawLike',
+      component: () => import('../views/agentic-chat/AgenticChatView.vue'),
+      meta: { requiresAuth: true, standaloneLayout: true, agentType: 3, title: 'Claw-like' },
+    },
+    {
       path: '/app/agentic-chat-ui/shared-sessions',
       name: 'sharedSessions',
       component: () => import('../views/agentic-chat/SharedSessionsView.vue'),

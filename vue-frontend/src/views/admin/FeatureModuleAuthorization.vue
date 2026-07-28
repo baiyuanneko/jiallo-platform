@@ -40,6 +40,7 @@ interface ModuleInfo {
 
 const moduleList: ModuleInfo[] = [
   { code: 'rag_knowledge_base', label: 'RAG 知识库', desc: 'RAG 知识库管理与检索' },
+  { code: 'claw_like', label: 'Claw-like', desc: '内置 Shell 与文件工具的编码智能体' },
 ]
 
 const tableLoading = ref(false)

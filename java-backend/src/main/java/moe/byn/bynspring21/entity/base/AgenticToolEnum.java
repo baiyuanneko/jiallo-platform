@@ -16,7 +16,13 @@ public enum AgenticToolEnum {
     MEMORY_TOOLS("memory_tools", "记忆工具"),
     WEB_FETCH("web_fetch", "网页内容抓取"),
     GET_DATETIME("get_datetime", "日期时间获取"),
-    RAG_KNOWLEDGE_BASE("rag_knowledge_base", "RAG 知识库");
+    RAG_KNOWLEDGE_BASE("rag_knowledge_base", "RAG 知识库"),
+    EXECUTE_SHELL_COMMAND("execute_shell_command", "Shell命令执行"),
+    READ_FILE("read_file", "文件读取"),
+    WRITE_FILE("write_file", "文件写入"),
+    EDIT_FILE("edit_file", "文件编辑"),
+    LIST_FILES("list_files", "目录列举"),
+    SEARCH_FILES("search_files", "文件搜索");
 
     @EnumValue
     @JsonValue

@@ -17,6 +17,12 @@ spring:
       connection-timeout: 5000
       idle-timeout: 300000
       max-lifetime: 600000
+  flyway:
+    # 自动迁移开关：裸机运行的兜底默认值（docker compose 部署默认开启，见 docker-compose.yml）
+    enabled: ${FLYWAY_ENABLED:false}
+    locations: classpath:db/migration
+    # 已有数据的库首次启用时自动以 V1 为基线，只执行更新的迁移
+    baseline-on-migrate: true
   data:
     redis:
       host: ${REDIS_HOST}
@@ -97,3 +103,7 @@ web-fetch:
   max-response-body-size: 524288
   max-links: 20
   user-agent: ""
+
+claw:
+  like:
+    workspace-root: ${CLAW_LIKE_WORKSPACE_ROOT:./claw-workspace}

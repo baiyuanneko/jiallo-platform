@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import moe.byn.bynspring21.entity.AgenticChatMessage;
@@ -14,6 +15,7 @@ import moe.byn.bynspring21.entity.User;
 import moe.byn.bynspring21.entity.AgenticChatSession;
 import moe.byn.bynspring21.entity.base.AgenticToolEnum;
 import moe.byn.bynspring21.entity.tool.BochaWebSearch;
+import moe.byn.bynspring21.entity.tool.ClawToolContext;
 import moe.byn.bynspring21.entity.tool.MemoryTools;
 import moe.byn.bynspring21.entity.tool.RagKnowledgeBaseTool;
 import moe.byn.bynspring21.entity.tool.ObservableToolCallingManager;
@@ -98,6 +100,21 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
             "minimax-m2.7"
     };
 
+    private static final Integer CLAW_LIKE_AGENT_TYPE = 3;
+
+    private static final String CLAW_LIKE_MODULE_CODE = "claw_like";
+
+    /**
+     * Claw-like 应用固定启用的专属工具集，与普通聊天工具严格隔离
+     */
+    private static final List<AgenticToolEnum> CLAW_LIKE_TOOLS = List.of(
+            AgenticToolEnum.EXECUTE_SHELL_COMMAND,
+            AgenticToolEnum.READ_FILE,
+            AgenticToolEnum.WRITE_FILE,
+            AgenticToolEnum.EDIT_FILE,
+            AgenticToolEnum.LIST_FILES,
+            AgenticToolEnum.SEARCH_FILES);
+
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, AtomicBoolean>> cancellationFlags = new ConcurrentHashMap<>();
 
     private final ConcurrentHashMap<String, CompletableFuture<Map<String, String>>> streamStopResults = new ConcurrentHashMap<>();
@@ -176,16 +193,37 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         // agentType 权限检查：在主线程中执行，确保有 SecurityContext
         User currentUser = securityUtil.getUser();
         List<String> userGroupIds = userGroupMemberService.getUserGroupIds(currentUser.getId());
-        Set<Integer> availableAgentTypes = new HashSet<>(agentTypeAvailabilityService.getAvailableAgentTypes(currentUser.getRoleType()));
-        if (!userGroupIds.isEmpty()) {
-            availableAgentTypes.addAll(agentTypeGroupAvailabilityService.getAvailableAgentTypesForGroups(userGroupIds));
-        }
-        if (!availableAgentTypes.contains(vo.getAgentType())) {
-            try {
-                emitter.send(SseEmitter.event().name("error").data("当前角色无权使用 agentType=" + vo.getAgentType()));
-                emitter.complete();
-            } catch (IOException ignored) {}
-            return emitter;
+        if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
+            // Claw-like 应用：不检查 agent_type_availability，改查功能模块授权
+            if (!featureModuleAvailabilityService.isModuleAvailable(CLAW_LIKE_MODULE_CODE, currentUser.getRoleType(), userGroupIds)) {
+                try {
+                    emitter.send(SseEmitter.event().name("error").data("当前角色无权访问 Claw-like 功能"));
+                    emitter.complete();
+                } catch (IOException ignored) {}
+                return emitter;
+            }
+        } else {
+            Set<Integer> availableAgentTypes = new HashSet<>(agentTypeAvailabilityService.getAvailableAgentTypes(currentUser.getRoleType()));
+            if (!userGroupIds.isEmpty()) {
+                availableAgentTypes.addAll(agentTypeGroupAvailabilityService.getAvailableAgentTypesForGroups(userGroupIds));
+            }
+            if (!availableAgentTypes.contains(vo.getAgentType())) {
+                try {
+                    emitter.send(SseEmitter.event().name("error").data("当前角色无权使用 agentType=" + vo.getAgentType()));
+                    emitter.complete();
+                } catch (IOException ignored) {}
+                return emitter;
+            }
+
+            // Claw-like 专属工具仅限 agentType=3 使用
+            if (vo.getEnabledAgenticTools() != null
+                    && vo.getEnabledAgenticTools().stream().anyMatch(CLAW_LIKE_TOOLS::contains)) {
+                try {
+                    emitter.send(SseEmitter.event().name("error").data("该工具仅限 Claw-like 应用使用"));
+                    emitter.complete();
+                } catch (IOException ignored) {}
+                return emitter;
+            }
         }
 
         // 检查 RAG 知识库工具权限
@@ -372,6 +410,14 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     }
                 }
 
+                // agentType=3 时在最前面插入 Claw-like 系统提示词
+                if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
+                    String clawLikePrompt = sysConfigService.getConfigValue("clawLikeSystemPrompt");
+                    if (clawLikePrompt != null && !clawLikePrompt.isBlank()) {
+                        messages.add(0, new SystemMessage(clawLikePrompt));
+                    }
+                }
+
                 String simpleTaskModelId = sysConfigService.getConfigValue("simpleTaskModelId");
                 if (isNewSession && StringUtils.hasText(simpleTaskModelId)) {
                     final String userTextForTitle = vo.getTextContent();
@@ -380,7 +426,10 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
 
                 ChatModel chatModel = sysLlmModelService.createChatModelByModelId(resolvedModelId);
 
-                if (isNewSession) {
+                if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
+                    // Claw-like 应用固定启用专属工具集，不读写会话工具配置
+                    enabledTools = CLAW_LIKE_TOOLS;
+                } else if (isNewSession) {
                     enabledTools = vo.getEnabledAgenticTools() != null ? vo.getEnabledAgenticTools()
                             : Collections.<AgenticToolEnum>emptyList();
                 } else {
@@ -439,6 +488,14 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     MemoryTools.setContext(userId, vo.getAgentType());
                     // 设置 RAG 知识库工具上下文（scope + libraryIds）
                     ragKnowledgeBaseTool.setContext(vo.getRagLibraryIds(), userId);
+                    // 设置 Claw-like 工具上下文（userId + sessionId）
+                    if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
+                        if (session.getId() == null) {
+                            // 新会话提前分配ID（ASSIGN_ID 会沿用已设置的ID），保证工作区目录与最终会话ID一致
+                            session.setId(IdWorker.getIdStr());
+                        }
+                        ClawToolContext.setContext(userId, session.getId());
+                    }
                     try {
                         for (int iteration = 0; iteration < 50; iteration++) {
                             if (cancelFlag.get()) throw new ChatStreamCancelledException("用户取消");
@@ -484,6 +541,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                         MemoryTools.clearContext();
                         RagKnowledgeBaseTool.clearContext();
                         BochaWebSearch.clearContext();
+                        ClawToolContext.clearContext();
                     }
                 }
 

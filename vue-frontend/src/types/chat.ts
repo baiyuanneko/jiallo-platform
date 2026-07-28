@@ -16,6 +16,7 @@ export enum AgentType {
   CHAT_CLIENT = 0,
   REACT_AGENT = 1,
   DIGITAL_BYN = 2,
+  CLAW_LIKE = 3,
 }
 
 export enum ModelType {

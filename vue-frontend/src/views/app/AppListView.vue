@@ -7,7 +7,15 @@ import { useChatStore } from '@/stores/chat'
 const router = useRouter()
 const chatStore = useChatStore()
 
-const apps = [
+interface AppEntry {
+  id?: string
+  path?: string
+  title: string
+  requiresAuth?: boolean
+  authFlag?: 'rag' | 'clawLike'
+}
+
+const apps: AppEntry[] = [
   {
     id: 'agentic-chat-ui',
     title: 'Agentic Chat UI',
@@ -16,12 +24,26 @@ const apps = [
     path: '/rag-library',
     title: 'RAG 知识库',
     requiresAuth: true,
+    authFlag: 'rag',
+  },
+  {
+    id: 'claw-like',
+    title: 'Claw-like',
+    requiresAuth: true,
+    authFlag: 'clawLike',
   },
 ]
 
 onMounted(() => {
   chatStore.loadRagModuleAuth()
+  chatStore.loadClawLikeAuth()
 })
+
+function isAppAuthorized(app: AppEntry): boolean {
+  if (app.authFlag === 'rag') return chatStore.ragModuleAuthorized
+  if (app.authFlag === 'clawLike') return chatStore.clawLikeAuthorized
+  return true
+}
 
 function handleAppClick(app: { id?: string; path?: string }) {
   if (app.path) {
@@ -48,7 +70,7 @@ function handleAppClick(app: { id?: string; path?: string }) {
       <div class="service-grid">
         <template v-for="app in apps" :key="app.id || app.path">
           <button
-            v-if="!app.requiresAuth || chatStore.ragModuleAuthorized"
+            v-if="!app.requiresAuth || isAppAuthorized(app)"
             type="button"
             class="service-entry"
             @click="handleAppClick(app)"

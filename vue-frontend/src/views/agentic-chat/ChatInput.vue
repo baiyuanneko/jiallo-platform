@@ -494,8 +494,9 @@ function handleInput() {
       </div>
 
       <div class="chat-input__toolbar">
-        <!-- Agent Harness 选择 -->
+        <!-- Agent Harness 选择（claw-like 模式隐藏，agentType 固定为 CLAW_LIKE） -->
         <a-popover
+          v-if="!chatStore.isClawLikeMode"
           v-model:open="agentPopoverVisible"
           trigger="click"
           placement="topLeft"
@@ -538,8 +539,9 @@ function handleInput() {
           </button>
         </a-popover>
 
-        <!-- 工具列表 -->
+        <!-- 工具列表（claw-like 模式隐藏，工具由后端写死） -->
         <a-popover
+          v-if="!chatStore.isClawLikeMode"
           v-model:open="toolsPopoverVisible"
           trigger="click"
           placement="topLeft"
@@ -631,8 +633,9 @@ function handleInput() {
           </button>
         </a-popover>
 
-        <!-- 模型能力方案 -->
+        <!-- 模型能力方案（claw-like 模式隐藏） -->
         <a-popover
+          v-if="!chatStore.isClawLikeMode"
           v-model:open="toolsGearVisible"
           trigger="click"
           placement="topLeft"
@@ -699,7 +702,7 @@ function handleInput() {
         </a-popover>
 
         <!-- RAG 知识库选择 -->
-        <template v-if="chatStore.enabledTools.includes('rag_knowledge_base')">
+        <template v-if="!chatStore.isClawLikeMode && chatStore.enabledTools.includes('rag_knowledge_base')">
           <a-popover trigger="click" placement="top" @visibleChange="(visible: boolean) => { if (visible) loadRagLibraries() }">
             <template #content>
               <div style="min-width: 260px; padding: 8px 0;">
