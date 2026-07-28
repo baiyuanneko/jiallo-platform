@@ -169,7 +169,7 @@ function handleDeleteSession(sessionId: string, sessionName: string) {
               <MenuFoldOutlined />
             </button>
           </a-tooltip>
-          <h2 class="chat-sidebar__title">Agentic Chat UI</h2>
+          <h2 class="chat-sidebar__title">{{ chatStore.isClawLikeMode ? 'Jiallo Claw' : 'Agentic Chat UI' }}</h2>
         </div>
       </div>
 

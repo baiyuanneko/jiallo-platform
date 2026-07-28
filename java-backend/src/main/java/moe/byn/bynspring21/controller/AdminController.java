@@ -492,6 +492,28 @@ public class AdminController {
         return R.ok();
     }
 
+    @Operation(
+            summary = "获取 Claw-like 系统提示词",
+            description = "获取 clawLike (agentType=3) 的系统提示词配置",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @GetMapping("config/clawLikeSystemPrompt")
+    public R<String> getClawLikeSystemPrompt() {
+        return R.ok(sysConfigService.getConfigValue("clawLikeSystemPrompt"));
+    }
+
+    @Operation(
+            summary = "设置 Claw-like 系统提示词",
+            description = "设置 clawLike (agentType=3) 的系统提示词，传入空字符串表示清除提示词",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("config/clawLikeSystemPrompt")
+    public R<Void> setClawLikeSystemPrompt(
+            @Validated @RequestBody BusiAdminVo.SetClawLikePromptVo vo) {
+        sysConfigService.setConfigValue("clawLikeSystemPrompt", vo.getPrompt());
+        return R.ok();
+    }
+
     // ==================== AgentType 可用性管理端点 ====================
 
     @Operation(

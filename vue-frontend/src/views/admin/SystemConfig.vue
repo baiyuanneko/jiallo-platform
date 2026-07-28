@@ -8,6 +8,8 @@ import {
   adminListLlmModelsApi,
   adminGetDigitalBynPromptApi,
   adminSetDigitalBynPromptApi,
+  adminGetClawLikePromptApi,
+  adminSetClawLikePromptApi,
 } from '@/api/apiAdmin'
 import type { SystemConfig, LlmModel } from '@/types/admin'
 import { ui } from '@/utils/ui'
@@ -33,6 +35,12 @@ const digitalBynPrompt = ref<string | null>(null)
 const editPromptDialogVisible = ref(false)
 const editPromptLoading = ref(false)
 const editPromptText = ref('')
+
+// Claw-like 提示词配置
+const clawLikePrompt = ref<string | null>(null)
+const editClawPromptDialogVisible = ref(false)
+const editClawPromptLoading = ref(false)
+const editClawPromptText = ref('')
 
 async function fetchConfig() {
   loading.value = true
@@ -134,9 +142,38 @@ async function handlePromptSave() {
   }
 }
 
+async function fetchClawLikePrompt() {
+  try {
+    const res = await adminGetClawLikePromptApi()
+    clawLikePrompt.value = res.data.data ?? null
+  } catch (error) {
+    console.error('获取 Claw-like 提示词失败:', error)
+  }
+}
+
+function openEditClawPromptDialog() {
+  editClawPromptText.value = clawLikePrompt.value ?? ''
+  editClawPromptDialogVisible.value = true
+}
+
+async function handleClawPromptSave() {
+  editClawPromptLoading.value = true
+  try {
+    await adminSetClawLikePromptApi(editClawPromptText.value)
+    ui.success('保存成功')
+    editClawPromptDialogVisible.value = false
+    fetchClawLikePrompt()
+  } catch (error) {
+    console.error('保存 Claw-like 提示词失败:', error)
+  } finally {
+    editClawPromptLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchConfig()
   fetchDigitalBynPrompt()
+  fetchClawLikePrompt()
 })
 </script>
 
@@ -182,6 +219,23 @@ onMounted(() => {
           </div>
           <div class="config-action">
             <a-button type="primary" @click="openEditModelDialog">
+              <template #icon><EditOutlined /></template>
+              修改
+            </a-button>
+          </div>
+        </div>
+
+        <div class="config-item">
+          <div class="config-info">
+            <div class="config-label">Claw-like 系统提示词</div>
+            <div class="config-value">
+              <a-tag v-if="clawLikePrompt" color="success">已配置</a-tag>
+              <a-tag v-else color="default">未配置</a-tag>
+              <span class="config-hint">设置 Claw-like 应用（agentType=3）注入的固定系统提示词</span>
+            </div>
+          </div>
+          <div class="config-action">
+            <a-button type="primary" @click="openEditClawPromptDialog">
               <template #icon><EditOutlined /></template>
               修改
             </a-button>
@@ -293,6 +347,25 @@ onMounted(() => {
           v-model:value="editPromptText"
           :auto-size="{ minRows: 6, maxRows: 20 }"
           placeholder="请输入 byn 数字分身的系统提示词..."
+        />
+      </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="editClawPromptDialogVisible"
+      title="修改 Claw-like 系统提示词"
+      :confirm-loading="editClawPromptLoading"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="handleClawPromptSave"
+      width="640px"
+    >
+      <div class="edit-group">
+        <div class="edit-label">系统提示词</div>
+        <a-textarea
+          v-model:value="editClawPromptText"
+          :auto-size="{ minRows: 6, maxRows: 20 }"
+          placeholder="请输入 Claw-like 的系统提示词..."
         />
       </div>
     </a-modal>

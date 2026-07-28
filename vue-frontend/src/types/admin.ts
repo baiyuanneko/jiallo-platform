@@ -429,3 +429,4 @@ export interface SystemConfig {
 export type RSystemConfigList = ApiResponse<SystemConfig[]>
 export type RAllowRegisterSwitch = ApiResponse<null>
 export type RDigitalBynPrompt = ApiResponse<string | null>
+export type RClawLikePrompt = ApiResponse<string | null>

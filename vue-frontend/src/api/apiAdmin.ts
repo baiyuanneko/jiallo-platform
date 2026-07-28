@@ -31,6 +31,7 @@ import type {
   RSystemConfigList,
   RAllowRegisterSwitch,
   RDigitalBynPrompt,
+  RClawLikePrompt,
   QueryLlmProvidersVo,
   QueryLlmModelsVo,
   QueryPagedLlmModelsVo,
@@ -416,6 +417,21 @@ export function adminGetDigitalBynPromptApi() {
  */
 export function adminSetDigitalBynPromptApi(prompt: string) {
   return request.post<RVoid>('/admin/config/digitalBynSystemPrompt', { prompt })
+}
+
+/**
+ * 获取 Claw-like 系统提示词
+ */
+export function adminGetClawLikePromptApi() {
+  return request.get<RClawLikePrompt>('/admin/config/clawLikeSystemPrompt')
+}
+
+/**
+ * 设置 Claw-like 系统提示词
+ * 传空字符串表示清除提示词
+ */
+export function adminSetClawLikePromptApi(prompt: string) {
+  return request.post<RVoid>('/admin/config/clawLikeSystemPrompt', { prompt })
 }
 
 // ==================== AgentType 授权管理 API ====================

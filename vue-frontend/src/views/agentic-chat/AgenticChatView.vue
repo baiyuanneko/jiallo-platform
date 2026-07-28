@@ -144,7 +144,7 @@ function closeSidebar() {
         <button class="agentic-chat__back-btn" @click="goBack">
           <ArrowLeftOutlined />
         </button>
-        <span class="agentic-chat__mobile-title">{{ chatStore.isClawLikeMode ? 'Claw-like' : 'Agentic Chat' }}</span>
+        <span class="agentic-chat__mobile-title">{{ chatStore.isClawLikeMode ? 'Jiallo Claw' : 'Agentic Chat' }}</span>
       </div>
       <ChatTabBar />
       <ChatPanel />

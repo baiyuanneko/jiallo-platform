@@ -241,6 +241,17 @@ public class BusiAdminVo {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @Schema(description = "设置 Claw-like 系统提示词请求参数")
+    public static class SetClawLikePromptVo {
+        @Schema(description = "系统提示词内容，空字符串表示清除", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotBlank(message = "prompt 不能为空")
+        private String prompt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     @Schema(description = "查询 agentType 可用角色请求参数")
     public static class GetAgentTypeAvailableRolesVo {
         @Schema(description = "agentType", requiredMode = Schema.RequiredMode.REQUIRED)
