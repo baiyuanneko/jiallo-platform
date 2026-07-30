@@ -550,4 +550,84 @@ public class BusiAdminVo {
         @NotEmpty(message = "用户组列表不能为空")
         private List<String> groupIds;
     }
+
+    // ==================== Claw-like 安全级别 VO ====================
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Claw-like 角色安全级别项")
+    public static class ClawRoleSecurityLevelVo {
+        @Schema(description = "角色代码，对应 RoleType 枚举值")
+        private Integer roleCode;
+
+        @Schema(description = "安全级别：1-工作区文件，2-完全访问")
+        private Integer securityLevel;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "设置 Claw-like 角色安全级别请求参数")
+    public static class SetClawRoleSecurityLevelVo {
+        @Schema(description = "角色代码，对应 RoleType 枚举值", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "roleCode 不能为空")
+        private Integer roleCode;
+
+        @Schema(description = "安全级别：1-工作区文件，2-完全访问", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "securityLevel 不能为空")
+        private Integer securityLevel;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "移除 Claw-like 角色安全级别请求参数")
+    public static class RemoveClawRoleSecurityLevelVo {
+        @Schema(description = "角色代码，对应 RoleType 枚举值", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "roleCode 不能为空")
+        private Integer roleCode;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Claw-like 用户组安全级别项")
+    public static class ClawGroupSecurityLevelVo {
+        @Schema(description = "用户组ID")
+        private String groupId;
+
+        @Schema(description = "安全级别：1-工作区文件，2-完全访问")
+        private Integer securityLevel;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "设置 Claw-like 用户组安全级别请求参数")
+    public static class SetClawGroupSecurityLevelVo {
+        @Schema(description = "用户组ID", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotBlank(message = "groupId 不能为空")
+        private String groupId;
+
+        @Schema(description = "安全级别：1-工作区文件，2-完全访问", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "securityLevel 不能为空")
+        private Integer securityLevel;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "移除 Claw-like 用户组安全级别请求参数")
+    public static class RemoveClawGroupSecurityLevelVo {
+        @Schema(description = "用户组ID", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotBlank(message = "groupId 不能为空")
+        private String groupId;
+    }
 }

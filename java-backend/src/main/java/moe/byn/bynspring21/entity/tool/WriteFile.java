@@ -18,13 +18,13 @@ public class WriteFile {
     @Autowired
     private ClawWorkspaceUtil clawWorkspaceUtil;
 
-    @Tool(name = "write_file", description = "将文本内容写入当前工作区内的指定文件（覆盖写），父目录不存在时会自动创建。")
+    @Tool(name = "write_file", description = "将文本内容写入指定文件（覆盖写），父目录不存在时会自动创建。")
     public String writeFile(
-            @ToolParam(description = "文件路径（相对于当前工作区）", required = true) String path,
+            @ToolParam(description = "文件路径（相对于当前工作区；完全访问级别下也接受绝对路径）", required = true) String path,
             @ToolParam(description = "要写入的完整文本内容", required = true) String content) {
         try {
             Path workspace = clawWorkspaceUtil.resolveCurrentWorkspace();
-            Path file = clawWorkspaceUtil.resolveInWorkspace(workspace, path);
+            Path file = clawWorkspaceUtil.resolvePath(workspace, path);
             if (file.equals(workspace)) {
                 return "错误：path 必须指向文件，不能是工作区根目录";
             }

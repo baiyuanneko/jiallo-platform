@@ -153,6 +153,12 @@ const router = createRouter({
           component: () => import('../views/admin/FeatureModuleAuthorization.vue'),
         },
         {
+          path: 'claw-security-level',
+          name: 'adminClawSecurityLevel',
+          component: () => import('../views/admin/ClawSecurityLevelAuthorization.vue'),
+          meta: { title: 'Claw 安全级别设置' },
+        },
+        {
           path: 'user-groups',
           name: 'adminUserGroups',
           component: () => import('../views/admin/UserGroupManagement.vue'),

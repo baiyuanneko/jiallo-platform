@@ -14,6 +14,7 @@ import moe.byn.bynspring21.entity.SysLlmModel;
 import moe.byn.bynspring21.entity.User;
 import moe.byn.bynspring21.entity.AgenticChatSession;
 import moe.byn.bynspring21.entity.base.AgenticToolEnum;
+import moe.byn.bynspring21.entity.base.ClawSecurityLevel;
 import moe.byn.bynspring21.entity.tool.BochaWebSearch;
 import moe.byn.bynspring21.entity.tool.ClawToolContext;
 import moe.byn.bynspring21.entity.tool.MemoryTools;
@@ -35,6 +36,7 @@ import moe.byn.bynspring21.service.AgentTypeAvailabilityService;
 import moe.byn.bynspring21.service.AgentTypeGroupAvailabilityService;
 import moe.byn.bynspring21.service.AgenticChatSessionService;
 import moe.byn.bynspring21.service.ChatsessEnabledToolService;
+import moe.byn.bynspring21.service.ClawLikeSecurityLevelService;
 import moe.byn.bynspring21.security.SecurityUtil;
 import moe.byn.bynspring21.service.MinioService;
 import moe.byn.bynspring21.service.SysConfigService;
@@ -105,7 +107,17 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     private static final String CLAW_LIKE_MODULE_CODE = "claw_like";
 
     /**
-     * Claw-like 应用固定启用的专属工具集，与普通聊天工具严格隔离
+     * Claw-like 应用的文件工具集（WORKSPACE 安全级别可用），与普通聊天工具严格隔离
+     */
+    private static final List<AgenticToolEnum> CLAW_LIKE_FILE_TOOLS = List.of(
+            AgenticToolEnum.READ_FILE,
+            AgenticToolEnum.WRITE_FILE,
+            AgenticToolEnum.EDIT_FILE,
+            AgenticToolEnum.LIST_FILES,
+            AgenticToolEnum.SEARCH_FILES);
+
+    /**
+     * Claw-like 应用固定启用的专属工具集（FULL 安全级别可用，即 5 个文件工具 + shell），与普通聊天工具严格隔离
      */
     private static final List<AgenticToolEnum> CLAW_LIKE_TOOLS = List.of(
             AgenticToolEnum.EXECUTE_SHELL_COMMAND,
@@ -169,6 +181,9 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     private FeatureModuleAvailabilityService featureModuleAvailabilityService;
 
     @Autowired
+    private ClawLikeSecurityLevelService clawLikeSecurityLevelService;
+
+    @Autowired
     private UserGroupMemberService userGroupMemberService;
 
     @Autowired
@@ -193,6 +208,8 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         // agentType 权限检查：在主线程中执行，确保有 SecurityContext
         User currentUser = securityUtil.getUser();
         List<String> userGroupIds = userGroupMemberService.getUserGroupIds(currentUser.getId());
+        // Claw-like 安全级别：在主线程解析（此时有 SecurityContext），供异步段按级别确定工具集与提示词
+        final int clawLevel;
         if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
             // Claw-like 应用：不检查 agent_type_availability，改查功能模块授权
             if (!featureModuleAvailabilityService.isModuleAvailable(CLAW_LIKE_MODULE_CODE, currentUser.getRoleType(), userGroupIds)) {
@@ -202,7 +219,10 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                 } catch (IOException ignored) {}
                 return emitter;
             }
+            // 生效级别 = 角色授权与所有用户组授权中的最高值，无授权记录为 NONE（纯聊天，不拒绝）
+            clawLevel = clawLikeSecurityLevelService.resolveEffectiveLevel(currentUser.getRoleType(), userGroupIds);
         } else {
+            clawLevel = ClawSecurityLevel.NONE.getCode();
             Set<Integer> availableAgentTypes = new HashSet<>(agentTypeAvailabilityService.getAvailableAgentTypes(currentUser.getRoleType()));
             if (!userGroupIds.isEmpty()) {
                 availableAgentTypes.addAll(agentTypeGroupAvailabilityService.getAvailableAgentTypesForGroups(userGroupIds));
@@ -410,10 +430,17 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     }
                 }
 
-                // agentType=3 时在最前面插入 Claw-like 系统提示词
+                // agentType=3 时在最前面插入 Claw-like 系统提示词，并按安全级别追加级别说明
                 if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
                     String clawLikePrompt = sysConfigService.getConfigValue("clawLikeSystemPrompt");
                     if (clawLikePrompt != null && !clawLikePrompt.isBlank()) {
+                        if (clawLevel == ClawSecurityLevel.FULL.getCode()) {
+                            clawLikePrompt += "当前安全级别为【完全访问】，文件工具可访问服务器上的任意路径。";
+                        } else if (clawLevel == ClawSecurityLevel.WORKSPACE.getCode()) {
+                            clawLikePrompt += "当前安全级别为【工作区文件】，execute_shell_command 工具不可用，文件操作限定在工作区内。";
+                        } else {
+                            clawLikePrompt += "当前安全级别为【无权限】，你没有任何可用工具，请以纯对话方式回答。";
+                        }
                         messages.add(0, new SystemMessage(clawLikePrompt));
                     }
                 }
@@ -427,8 +454,14 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                 ChatModel chatModel = sysLlmModelService.createChatModelByModelId(resolvedModelId);
 
                 if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
-                    // Claw-like 应用固定启用专属工具集，不读写会话工具配置
-                    enabledTools = CLAW_LIKE_TOOLS;
+                    // Claw-like 应用按安全级别确定专属工具集，不读写会话工具配置；NONE 级别无工具，走纯流式分支
+                    if (clawLevel == ClawSecurityLevel.FULL.getCode()) {
+                        enabledTools = CLAW_LIKE_TOOLS;
+                    } else if (clawLevel == ClawSecurityLevel.WORKSPACE.getCode()) {
+                        enabledTools = CLAW_LIKE_FILE_TOOLS;
+                    } else {
+                        enabledTools = Collections.emptyList();
+                    }
                 } else if (isNewSession) {
                     enabledTools = vo.getEnabledAgenticTools() != null ? vo.getEnabledAgenticTools()
                             : Collections.<AgenticToolEnum>emptyList();
@@ -494,7 +527,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             // 新会话提前分配ID（ASSIGN_ID 会沿用已设置的ID），保证工作区目录与最终会话ID一致
                             session.setId(IdWorker.getIdStr());
                         }
-                        ClawToolContext.setContext(userId, session.getId());
+                        ClawToolContext.setContext(userId, session.getId(), clawLevel);
                     }
                     try {
                         for (int iteration = 0; iteration < 50; iteration++) {
@@ -685,6 +718,13 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
             availableAgentTypes.addAll(agentTypeGroupAvailabilityService.getAvailableAgentTypesForGroups(groupIds));
         }
         return new ArrayList<>(availableAgentTypes);
+    }
+
+    @Override
+    public Integer getClawSecurityLevel() {
+        User currentUser = securityUtil.getUser();
+        List<String> groupIds = userGroupMemberService.getUserGroupIds(currentUser.getId());
+        return clawLikeSecurityLevelService.resolveEffectiveLevel(currentUser.getRoleType(), groupIds);
     }
 
     @Override

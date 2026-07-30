@@ -1,6 +1,7 @@
 package moe.byn.bynspring21.utils;
 
 import lombok.extern.slf4j.Slf4j;
+import moe.byn.bynspring21.entity.base.ClawSecurityLevel;
 import moe.byn.bynspring21.entity.tool.ClawToolContext;
 import moe.byn.bynspring21.exception.BynBaseException;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,5 +55,24 @@ public class ClawWorkspaceUtil {
             throw new BynBaseException("路径越界：只允许访问当前工作区目录内的文件");
         }
         return resolved;
+    }
+
+    /**
+     * 按当前上下文安全级别解析路径：完全访问（FULL）级别下绝对路径与 .. 直接放行，
+     * 其余级别限定在工作区内（同 resolveInWorkspace）
+     */
+    public Path resolvePath(Path workspace, String path) {
+        Integer level = ClawToolContext.getLevel();
+        if (level == null || level != ClawSecurityLevel.FULL.getCode()) {
+            return resolveInWorkspace(workspace, path);
+        }
+        if (path == null || path.isBlank() || ".".equals(path)) {
+            return workspace;
+        }
+        Path raw = Paths.get(path);
+        if (raw.isAbsolute()) {
+            return raw.normalize().toAbsolutePath();
+        }
+        return workspace.resolve(path).normalize().toAbsolutePath();
     }
 }

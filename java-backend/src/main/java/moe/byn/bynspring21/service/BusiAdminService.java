@@ -101,4 +101,18 @@ public interface BusiAdminService {
     void authorizeModuleToGroups(BusiAdminVo.AuthorizeModuleToGroupsVo vo);
 
     void revokeModuleOfGroups(BusiAdminVo.RevokeModuleOfGroupsVo vo);
+
+    // ==================== Claw-like 安全级别管理 ====================
+
+    List<BusiAdminVo.ClawRoleSecurityLevelVo> listClawRoleSecurityLevels();
+
+    void setClawRoleSecurityLevel(BusiAdminVo.SetClawRoleSecurityLevelVo vo);
+
+    void removeClawRoleSecurityLevel(BusiAdminVo.RemoveClawRoleSecurityLevelVo vo);
+
+    List<BusiAdminVo.ClawGroupSecurityLevelVo> listClawGroupSecurityLevels();
+
+    void setClawGroupSecurityLevel(BusiAdminVo.SetClawGroupSecurityLevelVo vo);
+
+    void removeClawGroupSecurityLevel(BusiAdminVo.RemoveClawGroupSecurityLevelVo vo);
 }

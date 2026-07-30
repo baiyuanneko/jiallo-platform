@@ -17,6 +17,8 @@ public interface AgenticChatAppService {
 
     List<Integer> getAvailableAgentTypes();
 
+    Integer getClawSecurityLevel();
+
     Page<AgenticChatSession> pageAgenticChatSessions(AgenticChatAppVo.PageSessionsVo vo);
 
     AgenticChatSession getAgenticChatSession(String sessionId);

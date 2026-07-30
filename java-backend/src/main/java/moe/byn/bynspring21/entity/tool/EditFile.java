@@ -20,10 +20,10 @@ public class EditFile {
     @Autowired
     private ClawWorkspaceUtil clawWorkspaceUtil;
 
-    @Tool(name = "edit_file", description = "对当前工作区内的指定文件做精确字符串替换：将 oldString 替换为 newString。" +
+    @Tool(name = "edit_file", description = "对指定文件做精确字符串替换：将 oldString 替换为 newString。" +
             "oldString 必须在文件中唯一命中，否则替换失败，请提供足够的上下文保证唯一性。")
     public String editFile(
-            @ToolParam(description = "文件路径（相对于当前工作区）", required = true) String path,
+            @ToolParam(description = "文件路径（相对于当前工作区；完全访问级别下也接受绝对路径）", required = true) String path,
             @ToolParam(description = "要被替换的原始字符串（必须在文件中唯一出现）", required = true) String oldString,
             @ToolParam(description = "替换后的新字符串", required = true) String newString) {
         try {
@@ -31,7 +31,7 @@ public class EditFile {
                 return "错误：oldString 不能为空";
             }
             Path workspace = clawWorkspaceUtil.resolveCurrentWorkspace();
-            Path file = clawWorkspaceUtil.resolveInWorkspace(workspace, path);
+            Path file = clawWorkspaceUtil.resolvePath(workspace, path);
             if (!Files.exists(file) || !Files.isRegularFile(file)) {
                 return "错误：文件不存在 - " + path;
             }

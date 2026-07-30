@@ -13,6 +13,7 @@ import moe.byn.bynspring21.entity.dto.AdminDto;
 import moe.byn.bynspring21.entity.vo.BusiAdminVo;
 import moe.byn.bynspring21.exception.BynBaseException;
 import moe.byn.bynspring21.service.BusiAdminService;
+import moe.byn.bynspring21.service.ClawLikeSecurityLevelService;
 import moe.byn.bynspring21.service.AgentTypeAvailabilityService;
 import moe.byn.bynspring21.service.AgentTypeGroupAvailabilityService;
 import moe.byn.bynspring21.service.FeatureModuleAvailabilityService;
@@ -89,6 +90,9 @@ public class BusiAdminServiceImpl implements BusiAdminService {
 
     @Autowired
     private FeatureModuleGroupAvailabilityService featureModuleGroupAvailabilityService;
+
+    @Autowired
+    private ClawLikeSecurityLevelService clawLikeSecurityLevelService;
 
     @Override
     public List<SysLlmProvider> listSysLlmProviders() {
@@ -475,5 +479,51 @@ public class BusiAdminServiceImpl implements BusiAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void revokeModuleOfGroups(BusiAdminVo.RevokeModuleOfGroupsVo vo) {
         featureModuleGroupAvailabilityService.revokeModuleOfGroups(vo.getModuleCode(), vo.getGroupIds());
+    }
+
+    // ==================== Claw-like 安全级别管理 ====================
+
+    @Override
+    public List<BusiAdminVo.ClawRoleSecurityLevelVo> listClawRoleSecurityLevels() {
+        return clawLikeSecurityLevelService.listRoleLevels().stream()
+                .map(record -> BusiAdminVo.ClawRoleSecurityLevelVo.builder()
+                        .roleCode(record.getRoleCode())
+                        .securityLevel(record.getSecurityLevel())
+                        .build())
+                .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void setClawRoleSecurityLevel(BusiAdminVo.SetClawRoleSecurityLevelVo vo) {
+        clawLikeSecurityLevelService.setRoleLevel(vo.getRoleCode(), vo.getSecurityLevel());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void removeClawRoleSecurityLevel(BusiAdminVo.RemoveClawRoleSecurityLevelVo vo) {
+        clawLikeSecurityLevelService.removeRoleLevel(vo.getRoleCode());
+    }
+
+    @Override
+    public List<BusiAdminVo.ClawGroupSecurityLevelVo> listClawGroupSecurityLevels() {
+        return clawLikeSecurityLevelService.listGroupLevels().stream()
+                .map(record -> BusiAdminVo.ClawGroupSecurityLevelVo.builder()
+                        .groupId(record.getGroupId())
+                        .securityLevel(record.getSecurityLevel())
+                        .build())
+                .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void setClawGroupSecurityLevel(BusiAdminVo.SetClawGroupSecurityLevelVo vo) {
+        clawLikeSecurityLevelService.setGroupLevel(vo.getGroupId(), vo.getSecurityLevel());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void removeClawGroupSecurityLevel(BusiAdminVo.RemoveClawGroupSecurityLevelVo vo) {
+        clawLikeSecurityLevelService.removeGroupLevel(vo.getGroupId());
     }
 }

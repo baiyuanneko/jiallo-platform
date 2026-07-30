@@ -26,16 +26,16 @@ public class SearchFiles {
     @Autowired
     private ClawWorkspaceUtil clawWorkspaceUtil;
 
-    @Tool(name = "search_files", description = "在当前工作区内递归搜索包含指定关键词的文本行，返回 相对路径:行号:行内容 格式的匹配结果（最多 100 条）。")
+    @Tool(name = "search_files", description = "递归搜索包含指定关键词的文本行，返回 相对路径:行号:行内容 格式的匹配结果（最多 100 条）。")
     public String searchFiles(
             @ToolParam(description = "要搜索的关键词（纯文本，非正则）", required = true) String keyword,
-            @ToolParam(description = "搜索范围（相对于当前工作区的目录），为空表示整个工作区", required = false) String path) {
+            @ToolParam(description = "搜索范围（相对于当前工作区的目录；完全访问级别下也接受绝对路径），为空表示整个工作区", required = false) String path) {
         try {
             if (keyword == null || keyword.isEmpty()) {
                 return "错误：keyword 不能为空";
             }
             Path workspace = clawWorkspaceUtil.resolveCurrentWorkspace();
-            Path baseDir = clawWorkspaceUtil.resolveInWorkspace(workspace, path);
+            Path baseDir = clawWorkspaceUtil.resolvePath(workspace, path);
             if (!Files.exists(baseDir) || !Files.isDirectory(baseDir)) {
                 return "错误：搜索目录不存在 - " + (path != null ? path : ".");
             }

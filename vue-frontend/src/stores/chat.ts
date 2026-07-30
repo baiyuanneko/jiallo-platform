@@ -4,7 +4,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
 import { Modal } from 'ant-design-vue'
 import { h } from 'vue'
 import request from '@/utils/request'
-import { getSessionsPageApi, getSessionDetailApi, getAvailableModelsListApi, editMessageApi, deleteMessageApi, renameSessionApi, deleteSessionApi, getAvailableAgentTypesApi, submitPyodideToolResultApi, shareSessionApi, unshareSessionApi, reshareSessionApi, stopChatStreamApi } from '@/api/apiChat'
+import { getSessionsPageApi, getSessionDetailApi, getAvailableModelsListApi, editMessageApi, deleteMessageApi, renameSessionApi, deleteSessionApi, getAvailableAgentTypesApi, getClawSecurityLevelApi, submitPyodideToolResultApi, shareSessionApi, unshareSessionApi, reshareSessionApi, stopChatStreamApi } from '@/api/apiChat'
 import { createSseConnection, type SseCallbacks } from '@/utils/sse'
 import { ui } from '@/utils/ui'
 import { useUserStore } from '@/stores/user'
@@ -152,6 +152,7 @@ const selectedRagReferences = ref<{ turnIndex: number; items: RagSearchResultIte
 const ragModuleAuthorized = ref(false)
 const clawLikeAuthorized = ref(false)
 const isClawLikeMode = ref(false)
+const clawSecurityLevel = ref(0)
 /** 进入 claw-like 模式前的 agentType，退出时恢复 */
 let agentTypeBeforeClawLike: AgentType | null = null
   const sidebarVisible = ref(true)
@@ -286,6 +287,15 @@ let agentTypeBeforeClawLike: AgentType | null = null
       clawLikeAuthorized.value = res.data.data === true
     } catch {
       clawLikeAuthorized.value = false
+    }
+  }
+
+  async function loadClawSecurityLevel() {
+    try {
+      const res = await getClawSecurityLevelApi()
+      clawSecurityLevel.value = res.data.data ?? 0
+    } catch {
+      clawSecurityLevel.value = 0
     }
   }
 
@@ -1247,6 +1257,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
     ragModuleAuthorized,
     clawLikeAuthorized,
     isClawLikeMode,
+    clawSecurityLevel,
     sidebarVisible,
     sidebarCollapsed,
     reasoningEffort,
@@ -1259,6 +1270,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
     loadAgentTypes,
     loadRagModuleAuth,
     loadClawLikeAuth,
+    loadClawSecurityLevel,
     enterClawLikeMode,
     exitClawLikeMode,
     startNewSession,

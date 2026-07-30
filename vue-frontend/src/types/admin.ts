@@ -430,3 +430,36 @@ export type RSystemConfigList = ApiResponse<SystemConfig[]>
 export type RAllowRegisterSwitch = ApiResponse<null>
 export type RDigitalBynPrompt = ApiResponse<string | null>
 export type RClawLikePrompt = ApiResponse<string | null>
+
+// ==================== Claw 安全级别设置类型 ====================
+
+export interface ClawSecurityLevelRoleItem {
+  roleCode: number
+  securityLevel: number
+}
+
+export interface ClawSecurityLevelGroupItem {
+  groupId: string
+  securityLevel: number
+}
+
+export interface SetClawSecurityLevelRoleVo {
+  roleCode: number
+  securityLevel: number
+}
+
+export interface RemoveClawSecurityLevelRoleVo {
+  roleCode: number
+}
+
+export interface SetClawSecurityLevelGroupVo {
+  groupId: string
+  securityLevel: number
+}
+
+export interface RemoveClawSecurityLevelGroupVo {
+  groupId: string
+}
+
+export type RClawSecurityLevelRoleList = ApiResponse<ClawSecurityLevelRoleItem[]>
+export type RClawSecurityLevelGroupList = ApiResponse<ClawSecurityLevelGroupItem[]>

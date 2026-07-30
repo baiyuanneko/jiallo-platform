@@ -75,6 +75,12 @@ import type {
   RListUserGroup,
   RListGroupMemberUser,
   RListString,
+  SetClawSecurityLevelRoleVo,
+  RemoveClawSecurityLevelRoleVo,
+  SetClawSecurityLevelGroupVo,
+  RemoveClawSecurityLevelGroupVo,
+  RClawSecurityLevelRoleList,
+  RClawSecurityLevelGroupList,
 } from '@/types/admin'
 
 // ==================== 用户管理 API ====================
@@ -607,4 +613,50 @@ export function adminAuthorizeModuleToGroupsApi(data: AuthorizeModuleToGroupsVo)
  */
 export function adminRevokeModuleOfGroupsApi(data: RevokeModuleOfGroupsVo) {
   return request.post<RVoid>('/admin/feature-module-availability/revoke-groups', data)
+}
+
+// ==================== Claw 安全级别设置 API ====================
+
+/**
+ * 查询全部角色的 Claw 安全级别
+ * 无记录的角色视为 0（无权限）
+ */
+export function adminListClawSecurityLevelRolesApi() {
+  return request.post<RClawSecurityLevelRoleList>('/admin/claw-security-level/roles/list')
+}
+
+/**
+ * 设置角色的 Claw 安全级别（upsert，level 仅 1|2）
+ */
+export function adminSetClawSecurityLevelRoleApi(data: SetClawSecurityLevelRoleVo) {
+  return request.post<RVoid>('/admin/claw-security-level/roles/set', data)
+}
+
+/**
+ * 移除角色的 Claw 安全级别配置（恢复为无权限）
+ */
+export function adminRemoveClawSecurityLevelRoleApi(data: RemoveClawSecurityLevelRoleVo) {
+  return request.post<RVoid>('/admin/claw-security-level/roles/remove', data)
+}
+
+/**
+ * 查询全部用户组的 Claw 安全级别
+ * 无记录的用户组视为 0（无权限）
+ */
+export function adminListClawSecurityLevelGroupsApi() {
+  return request.post<RClawSecurityLevelGroupList>('/admin/claw-security-level/groups/list')
+}
+
+/**
+ * 设置用户组的 Claw 安全级别（upsert，level 仅 1|2）
+ */
+export function adminSetClawSecurityLevelGroupApi(data: SetClawSecurityLevelGroupVo) {
+  return request.post<RVoid>('/admin/claw-security-level/groups/set', data)
+}
+
+/**
+ * 移除用户组的 Claw 安全级别配置（恢复为无权限）
+ */
+export function adminRemoveClawSecurityLevelGroupApi(data: RemoveClawSecurityLevelGroupVo) {
+  return request.post<RVoid>('/admin/claw-security-level/groups/remove', data)
 }

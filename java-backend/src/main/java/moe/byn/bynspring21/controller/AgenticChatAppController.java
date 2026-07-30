@@ -44,6 +44,16 @@ public class AgenticChatAppController {
         return R.ok(agenticChatAppService.getAvailableAgentTypes());
     }
 
+    @Operation(
+            summary = "获取当前用户的 Claw-like 安全级别",
+            description = "返回当前用户生效的 Claw-like 安全级别：0-无权限，1-工作区文件，2-完全访问",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @GetMapping("clawSecurityLevel")
+    public R<Integer> getClawSecurityLevel() {
+        return R.ok(agenticChatAppService.getClawSecurityLevel());
+    }
+
     @Operation(summary = "分页查询会话列表")
     @PostMapping("sessions/page")
     public R<Page<AgenticChatSession>> pageAgenticChatSessions(

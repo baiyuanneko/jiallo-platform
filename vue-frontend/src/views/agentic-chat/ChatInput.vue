@@ -22,7 +22,7 @@ import {
 } from '@ant-design/icons-vue'
 import { Modal, Button, Checkbox, message } from 'ant-design-vue'
 import { useChatStore } from '@/stores/chat'
-import { AgentType } from '@/types/chat'
+import { AgentType, ClawSecurityLevel } from '@/types/chat'
 import { useQuoteReply } from '@/composables/useQuoteReply'
 import { usePyodide } from '@/composables/usePyodide'
 import { usePreferences } from '@/composables/usePreferences'
@@ -74,6 +74,18 @@ const enabledCount = computed(
 const currentAgentLabel = computed(
   () => agentOptions.value.find((o) => o.value === chatStore.currentAgentType)?.label ?? '',
 )
+
+// Claw-like 安全级别标签（只读展示，生效级别由后端决定）
+const clawSecurityLevelLabel = computed(() => {
+  switch (chatStore.clawSecurityLevel) {
+    case ClawSecurityLevel.FULL:
+      return '安全级别：完全访问'
+    case ClawSecurityLevel.WORKSPACE:
+      return '安全级别：工作区文件'
+    default:
+      return '安全级别：无权限（纯聊天）'
+  }
+})
 
 // Popover visibility
 const agentPopoverVisible = ref(false)
@@ -494,6 +506,11 @@ function handleInput() {
       </div>
 
       <div class="chat-input__toolbar">
+        <!-- Claw-like 安全级别（只读展示，生效级别由后端决定） -->
+        <span v-if="chatStore.isClawLikeMode" class="toolbar-chip toolbar-chip--static">
+          <span class="toolbar-chip__label">{{ clawSecurityLevelLabel }}</span>
+        </span>
+
         <!-- Agent Harness 选择（claw-like 模式隐藏，agentType 固定为 CLAW_LIKE） -->
         <a-popover
           v-if="!chatStore.isClawLikeMode"
@@ -1063,6 +1080,11 @@ function handleInput() {
 
 .toolbar-chip--static {
   cursor: default;
+}
+
+.toolbar-chip--static:hover {
+  background: #fafafa;
+  border-color: #e0e0e0;
 }
 
 .toolbar-chip__loading-icon {

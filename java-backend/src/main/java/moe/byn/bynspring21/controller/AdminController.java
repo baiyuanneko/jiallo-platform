@@ -768,4 +768,70 @@ public class AdminController {
         busiAdminService.revokeModuleOfGroups(vo);
         return R.ok();
     }
+
+    // ==================== Claw-like 安全级别管理端点 ====================
+
+    @Operation(
+            summary = "查询 Claw-like 角色安全级别列表",
+            description = "查询全部角色的 Claw-like 安全级别授权记录",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("claw-security-level/roles/list")
+    public R<List<BusiAdminVo.ClawRoleSecurityLevelVo>> listClawRoleSecurityLevels() {
+        return R.ok(busiAdminService.listClawRoleSecurityLevels());
+    }
+
+    @Operation(
+            summary = "设置 Claw-like 角色安全级别",
+            description = "设置指定角色的 Claw-like 安全级别（1-工作区文件，2-完全访问），已有记录则更新",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("claw-security-level/roles/set")
+    public R<Void> setClawRoleSecurityLevel(@Validated @RequestBody BusiAdminVo.SetClawRoleSecurityLevelVo vo) {
+        busiAdminService.setClawRoleSecurityLevel(vo);
+        return R.ok();
+    }
+
+    @Operation(
+            summary = "移除 Claw-like 角色安全级别",
+            description = "移除指定角色的 Claw-like 安全级别授权，移除后该角色按无授权（NONE）处理",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("claw-security-level/roles/remove")
+    public R<Void> removeClawRoleSecurityLevel(@Validated @RequestBody BusiAdminVo.RemoveClawRoleSecurityLevelVo vo) {
+        busiAdminService.removeClawRoleSecurityLevel(vo);
+        return R.ok();
+    }
+
+    @Operation(
+            summary = "查询 Claw-like 用户组安全级别列表",
+            description = "查询全部用户组的 Claw-like 安全级别授权记录",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("claw-security-level/groups/list")
+    public R<List<BusiAdminVo.ClawGroupSecurityLevelVo>> listClawGroupSecurityLevels() {
+        return R.ok(busiAdminService.listClawGroupSecurityLevels());
+    }
+
+    @Operation(
+            summary = "设置 Claw-like 用户组安全级别",
+            description = "设置指定用户组的 Claw-like 安全级别（1-工作区文件，2-完全访问），已有记录则更新",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("claw-security-level/groups/set")
+    public R<Void> setClawGroupSecurityLevel(@Validated @RequestBody BusiAdminVo.SetClawGroupSecurityLevelVo vo) {
+        busiAdminService.setClawGroupSecurityLevel(vo);
+        return R.ok();
+    }
+
+    @Operation(
+            summary = "移除 Claw-like 用户组安全级别",
+            description = "移除指定用户组的 Claw-like 安全级别授权，移除后该用户组按无授权（NONE）处理",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("claw-security-level/groups/remove")
+    public R<Void> removeClawGroupSecurityLevel(@Validated @RequestBody BusiAdminVo.RemoveClawGroupSecurityLevelVo vo) {
+        busiAdminService.removeClawGroupSecurityLevel(vo);
+        return R.ok();
+    }
 }

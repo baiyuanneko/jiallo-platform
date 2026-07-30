@@ -14,6 +14,7 @@ import type {
   RModelsPage,
   RModelsList,
   RAvailableAgentTypes,
+  RClawSecurityLevel,
   PyodideToolResultVo,
   ShareSessionVo,
   RShareSession,
@@ -108,6 +109,14 @@ export function deleteSessionApi(data: DeleteSessionVo) {
  */
 export function getAvailableAgentTypesApi() {
   return request.get<RAvailableAgentTypes>('/agenticChatApp/availableAgentTypes')
+}
+
+/**
+ * 获取当前用户的 Claw-like 安全级别
+ * 0=无权限（纯聊天）、1=工作区文件、2=完全访问，生效级别由后端决定
+ */
+export function getClawSecurityLevelApi() {
+  return request.get<RClawSecurityLevel>('/agenticChatApp/clawSecurityLevel')
 }
 
 /**

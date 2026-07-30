@@ -7,6 +7,7 @@ import {
   SettingOutlined,
   CloudServerOutlined,
   SafetyCertificateOutlined,
+  SecurityScanOutlined,
   RobotOutlined,
   TeamOutlined,
   MenuFoldOutlined,
@@ -73,6 +74,10 @@ function toggleSidebar() {
           <a-menu-item key="/admin/feature-module-authorizations">
             <SafetyCertificateOutlined />
             <span>特定功能模块授权</span>
+          </a-menu-item>
+          <a-menu-item key="/admin/claw-security-level">
+            <SecurityScanOutlined />
+            <span>Claw 安全级别设置</span>
           </a-menu-item>
           <a-menu-item key="/admin/user-groups">
             <TeamOutlined />

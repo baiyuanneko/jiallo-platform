@@ -23,14 +23,14 @@ public class ReadFile {
     @Autowired
     private ClawWorkspaceUtil clawWorkspaceUtil;
 
-    @Tool(name = "read_file", description = "读取当前工作区内指定文件的文本内容，可通过行偏移和行数限制分段读取大文件。")
+    @Tool(name = "read_file", description = "读取指定文件的文本内容，可通过行偏移和行数限制分段读取大文件。")
     public String readFile(
-            @ToolParam(description = "文件路径（相对于当前工作区）", required = true) String path,
+            @ToolParam(description = "文件路径（相对于当前工作区；完全访问级别下也接受绝对路径）", required = true) String path,
             @ToolParam(description = "起始行号（从 1 开始），默认 1", required = false) Long offset,
             @ToolParam(description = "最多读取的行数，默认 200，最大 2000", required = false) Long limit) {
         try {
             Path workspace = clawWorkspaceUtil.resolveCurrentWorkspace();
-            Path file = clawWorkspaceUtil.resolveInWorkspace(workspace, path);
+            Path file = clawWorkspaceUtil.resolvePath(workspace, path);
             if (!Files.exists(file)) {
                 return "错误：文件不存在 - " + path;
             }

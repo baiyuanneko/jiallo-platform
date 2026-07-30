@@ -22,12 +22,12 @@ public class ListFiles {
     @Autowired
     private ClawWorkspaceUtil clawWorkspaceUtil;
 
-    @Tool(name = "list_files", description = "列出当前工作区内指定目录的一层内容（不递归），标注文件/目录类型和文件大小。不传 path 时列出工作区根目录。")
+    @Tool(name = "list_files", description = "列出指定目录的一层内容（不递归），标注文件/目录类型和文件大小。不传 path 时列出工作区根目录。")
     public String listFiles(
-            @ToolParam(description = "目录路径（相对于当前工作区），为空表示工作区根目录", required = false) String path) {
+            @ToolParam(description = "目录路径（相对于当前工作区；完全访问级别下也接受绝对路径），为空表示工作区根目录", required = false) String path) {
         try {
             Path workspace = clawWorkspaceUtil.resolveCurrentWorkspace();
-            Path dir = clawWorkspaceUtil.resolveInWorkspace(workspace, path);
+            Path dir = clawWorkspaceUtil.resolvePath(workspace, path);
             if (!Files.exists(dir)) {
                 return "错误：目录不存在 - " + (path != null ? path : ".");
             }

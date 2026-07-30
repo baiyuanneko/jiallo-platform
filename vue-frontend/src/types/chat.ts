@@ -29,6 +29,13 @@ export enum MediaType {
   AUDIO = 1,
 }
 
+/** Claw-like 安全级别：0=无权限（纯聊天）、1=工作区文件、2=完全访问 */
+export enum ClawSecurityLevel {
+  NONE = 0,
+  WORKSPACE = 1,
+  FULL = 2,
+}
+
 // ==================== 工具内容解析类型 ====================
 
 /** type=2 assistant 消息中 toolContent 里每个工具调用的格式 */
@@ -266,6 +273,7 @@ export type RSessionDetail = ApiResponse<AgenticChatSession>
 export type RModelsPage = ApiResponse<PageResult<SysLlmModel>>
 export type RModelsList = ApiResponse<SysLlmModel[]>
 export type RAvailableAgentTypes = ApiResponse<number[]>
+export type RClawSecurityLevel = ApiResponse<number>
 export type RShareSession = ApiResponse<string>
 export type RSharedSessionDetail = ApiResponse<SharedSessionDetail>
 export type RSharedSessionsPage = ApiResponse<PageResult<SharedSessionItem>>
