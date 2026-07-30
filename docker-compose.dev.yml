@@ -21,6 +21,10 @@ services:
       context: ./java-backend
       dockerfile: Dockerfile.dev
     restart: "no"
+    # Run as the host user so bind-mounted files (target/, claw-workspace/) are
+    # owned by you, not root. Defaults to 1000:1000 (first user on most Linux
+    # distros); override with DEV_UID/DEV_GID if `id` shows something else.
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
     ports:
       - "8233:8233"
     environment:
@@ -28,9 +32,13 @@ services:
       SPRING_DEVTOOLS_RESTART_ENABLED: "true"
       # 开发环境启用 Flyway 自动迁移（生产默认关闭，见 docker-compose.yml）
       FLYWAY_ENABLED: "true"
+      # The container user has no passwd entry; point HOME/user.home at the
+      # writable dir prepared in Dockerfile.dev (holds the Maven repo volume).
+      HOME: /home/dev
+      MAVEN_OPTS: "-Duser.home=/home/dev"
     volumes:
       - ./java-backend:/app
-      - maven_repo:/root/.m2
+      - maven_repo_user:/home/dev/.m2
 
   frontend:
     build:
@@ -48,5 +56,7 @@ services:
       - frontend_node_modules:/app/node_modules
 
 volumes:
-  maven_repo:
+  # Fresh volume for the non-root container user (the old root-owned
+  # jiallo-dev_maven_repo volume can be removed to reclaim disk space).
+  maven_repo_user:
   frontend_node_modules:

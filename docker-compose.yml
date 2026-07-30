@@ -72,6 +72,10 @@ services:
         condition: service_started
     expose:
       - "8233"
+    volumes:
+      # Claw-like 工作区持久化到宿主机（容器默认工作区根路径为 /app/claw-workspace）。
+      # 注意：容器以 root 运行，宿主机上这些文件会是 root 属主，清理需 sudo。
+      - ./java-backend/claw-workspace:/app/claw-workspace
 
   frontend:
     build: ./vue-frontend

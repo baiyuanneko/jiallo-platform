@@ -2,11 +2,21 @@
 #
 # The source tree is bind-mounted to /app at runtime (see docker-compose.dev.yml),
 # so the image itself only provides the JDK + Maven toolchain.
-# NOTE: the container runs as root and writes to the mounted target/ directory;
-# run `sudo chown -R $USER:$USER target` before building on the host again.
+# NOTE: the container runs as the host user (see `user:` in docker-compose.dev.yml),
+# so files written to the bind-mounted target/ and claw-workspace/ stay owned by
+# the host user instead of root.
 FROM maven:3.9-eclipse-temurin-21
 
 WORKDIR /app
+
+# Home for the (passwd-less) container user. The named maven-repo volume mounts
+# at /home/dev/.m2 and inherits this ownership on first use, so Maven can write
+# its local repository there without running as root.
+RUN mkdir -p /home/dev/.m2 && chown -R 1000:1000 /home/dev
+
+# Use the Aliyun Maven Central mirror (global settings, not affected by the
+# /home/dev/.m2 volume mount).
+COPY docker-dev-settings.xml /usr/share/maven/conf/settings.xml
 
 # The entrypoint script lives in the bind-mounted source tree.
 ENTRYPOINT ["bash", "./docker-dev-entrypoint.sh"]

@@ -18,6 +18,9 @@
 Thumbs.db
 desktop.ini
 
+# ===== Runtime workspace =====
+java-backend/claw-workspace/
+
 # ===== Logs =====
 *.log
 npm-debug.log*
