@@ -50,6 +50,12 @@ public class AgenticChatAppVo {
 
         @Schema(description = "RAG 知识库ID列表")
         private List<String> ragLibraryIds;
+
+        @Schema(description = "Claw-like 请求的安全级别（仅 agentType=3 使用），后端按授权级别钳制：0-无权限，1-工作区文件，2-完全访问")
+        private Integer clawSecurityLevel;
+
+        @Schema(description = "Claw-like 审批模式（仅 agentType=3 使用）：0-自动审批，1-绕过审批，2-人工审批，空或非法值按自动审批处理")
+        private Integer clawApprovalMode;
     }
 
     @Data
@@ -133,6 +139,21 @@ public class AgenticChatAppVo {
 
         @Schema(description = "是否仅分享文本内容（默认true：过滤推理过程和工具结果）")
         private Boolean shareTextContentOnly;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Claw-like 工具调用人工审批结果提交")
+    public static class ClawToolApprovalVo {
+
+        @Schema(description = "审批请求ID", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotBlank(message = "requestId不能为空")
+        private String requestId;
+
+        @Schema(description = "是否批准该工具调用", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "approved不能为空")
+        private Boolean approved;
     }
 
     @Data

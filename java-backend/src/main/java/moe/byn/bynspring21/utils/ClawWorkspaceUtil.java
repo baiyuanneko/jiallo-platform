@@ -32,6 +32,13 @@ public class ClawWorkspaceUtil {
         if (userId == null || sessionId == null) {
             throw new BynBaseException("Claw-like 工具上下文未初始化");
         }
+        return resolveWorkspace(userId, sessionId);
+    }
+
+    /**
+     * 解析并创建指定 userId + sessionId 对应的工作区目录（不依赖 ThreadLocal 上下文，供文件管理 API 使用）
+     */
+    public Path resolveWorkspace(String userId, String sessionId) {
         Path workspace = Paths.get(workspaceRoot).toAbsolutePath().normalize()
                 .resolve(userId).resolve(sessionId).normalize();
         try {

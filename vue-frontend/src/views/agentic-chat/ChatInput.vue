@@ -22,7 +22,7 @@ import {
 } from '@ant-design/icons-vue'
 import { Modal, Button, Checkbox, message } from 'ant-design-vue'
 import { useChatStore } from '@/stores/chat'
-import { AgentType, ClawSecurityLevel } from '@/types/chat'
+import { AgentType, ClawSecurityLevel, ClawApprovalMode } from '@/types/chat'
 import { useQuoteReply } from '@/composables/useQuoteReply'
 import { usePyodide } from '@/composables/usePyodide'
 import { usePreferences } from '@/composables/usePreferences'
@@ -75,17 +75,19 @@ const currentAgentLabel = computed(
   () => agentOptions.value.find((o) => o.value === chatStore.currentAgentType)?.label ?? '',
 )
 
-// Claw-like 安全级别标签（只读展示，生效级别由后端决定）
-const clawSecurityLevelLabel = computed(() => {
-  switch (chatStore.clawSecurityLevel) {
-    case ClawSecurityLevel.FULL:
-      return '安全级别：完全访问'
-    case ClawSecurityLevel.WORKSPACE:
-      return '安全级别：工作区文件'
-    default:
-      return '安全级别：无权限（纯聊天）'
-  }
-})
+// Claw-like 安全级别选项：高于授权级别的选项禁用（生效级别由后端钳制）
+const clawLevelOptions = computed(() => [
+  { value: ClawSecurityLevel.FULL, label: '完全访问', disabled: chatStore.clawSecurityLevel < ClawSecurityLevel.FULL },
+  { value: ClawSecurityLevel.WORKSPACE, label: '仅工作区文件', disabled: chatStore.clawSecurityLevel < ClawSecurityLevel.WORKSPACE },
+  { value: ClawSecurityLevel.NONE, label: '无权限', disabled: false },
+])
+
+// Claw-like 审批模式选项
+const clawApprovalModeOptions = [
+  { value: ClawApprovalMode.AUTO, label: '自动审批（推荐）' },
+  { value: ClawApprovalMode.BYPASS, label: '绕过审批（不推荐）' },
+  { value: ClawApprovalMode.MANUAL, label: '人工审批' },
+]
 
 // Popover visibility
 const agentPopoverVisible = ref(false)
@@ -506,10 +508,30 @@ function handleInput() {
       </div>
 
       <div class="chat-input__toolbar">
-        <!-- Claw-like 安全级别（只读展示，生效级别由后端决定） -->
-        <span v-if="chatStore.isClawLikeMode" class="toolbar-chip toolbar-chip--static">
-          <span class="toolbar-chip__label">{{ clawSecurityLevelLabel }}</span>
-        </span>
+        <!-- Claw-like 安全级别选择（高于授权级别的选项禁用，生效级别由后端钳制） -->
+        <div v-if="chatStore.isClawLikeMode" class="toolbar-chip toolbar-chip--select">
+          <span class="toolbar-chip__label">安全级别</span>
+          <a-select
+            v-model:value="chatStore.clawSelectedLevel"
+            size="small"
+            variant="borderless"
+            :options="clawLevelOptions"
+          />
+        </div>
+
+        <!-- Claw-like 审批模式选择（无权限级别下无工具可审批，隐藏） -->
+        <div
+          v-if="chatStore.isClawLikeMode && chatStore.clawSelectedLevel !== ClawSecurityLevel.NONE"
+          class="toolbar-chip toolbar-chip--select"
+        >
+          <span class="toolbar-chip__label">审批模式</span>
+          <a-select
+            v-model:value="chatStore.clawApprovalMode"
+            size="small"
+            variant="borderless"
+            :options="clawApprovalModeOptions"
+          />
+        </div>
 
         <!-- Agent Harness 选择（claw-like 模式隐藏，agentType 固定为 CLAW_LIKE） -->
         <a-popover
@@ -1085,6 +1107,26 @@ function handleInput() {
 .toolbar-chip--static:hover {
   background: #fafafa;
   border-color: #e0e0e0;
+}
+
+.toolbar-chip--select {
+  cursor: default;
+  padding-right: 6px;
+}
+
+.toolbar-chip--select:hover {
+  background: #fafafa;
+  border-color: #e0e0e0;
+}
+
+.toolbar-chip--select :deep(.ant-select) {
+  min-width: 110px;
+}
+
+.toolbar-chip--select :deep(.ant-select-selector) {
+  font-size: 12px;
+  color: #262626;
+  padding-inline-start: 6px !important;
 }
 
 .toolbar-chip__loading-icon {

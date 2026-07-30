@@ -5,6 +5,7 @@ import {
   adminGetAllConfigApi,
   adminAllowRegisterSwitchApi,
   adminSimpleTaskModelSwitchApi,
+  adminClawLikeApprovalModelSwitchApi,
   adminListLlmModelsApi,
   adminGetDigitalBynPromptApi,
   adminSetDigitalBynPromptApi,
@@ -30,6 +31,13 @@ const editModelId = ref('')
 const availableModels = ref<LlmModel[]>([])
 const modelsLoading = ref(false)
 
+// Claw-like 审批模型配置
+const clawApprovalModelId = ref('')
+const clawApprovalModelName = ref('未配置')
+const editClawApprovalDialogVisible = ref(false)
+const editClawApprovalLoading = ref(false)
+const editClawApprovalModelId = ref('')
+
 // byn 数字分身提示词配置
 const digitalBynPrompt = ref<string | null>(null)
 const editPromptDialogVisible = ref(false)
@@ -52,6 +60,9 @@ async function fetchConfig() {
     const simpleTaskConfig = configList.value.find((item) => item.configKey === 'simpleTaskModelId')
     simpleTaskModelId.value = simpleTaskConfig?.configValue ?? ''
     simpleTaskModelName.value = simpleTaskModelId.value ? '已配置' : '未配置'
+    const clawApprovalConfig = configList.value.find((item) => item.configKey === 'clawLikeApprovalModelId')
+    clawApprovalModelId.value = clawApprovalConfig?.configValue ?? ''
+    clawApprovalModelName.value = clawApprovalModelId.value ? '已配置' : '未配置'
   } catch (error) {
     console.error('获取配置失败:', error)
   } finally {
@@ -99,7 +110,7 @@ async function openEditModelDialog() {
 async function handleModelSave() {
   editModelLoading.value = true
   try {
-    await adminSimpleTaskModelSwitchApi(editModelId.value)
+    await adminSimpleTaskModelSwitchApi(editModelId.value ?? '')
     ui.success('保存成功')
     editModelDialogVisible.value = false
     fetchConfig()
@@ -107,6 +118,41 @@ async function handleModelSave() {
     console.error('保存配置失败:', error)
   } finally {
     editModelLoading.value = false
+  }
+}
+
+async function loadAvailableModelsOnce() {
+  if (availableModels.value.length > 0) return
+  modelsLoading.value = true
+  try {
+    const res = await adminListLlmModelsApi({ pageNum: 1, pageSize: 200 })
+    if (res.data.code === 0) {
+      availableModels.value = res.data.data.records
+    }
+  } catch (error) {
+    console.error('获取模型列表失败:', error)
+  } finally {
+    modelsLoading.value = false
+  }
+}
+
+async function openEditClawApprovalDialog() {
+  editClawApprovalModelId.value = clawApprovalModelId.value
+  editClawApprovalDialogVisible.value = true
+  await loadAvailableModelsOnce()
+}
+
+async function handleClawApprovalModelSave() {
+  editClawApprovalLoading.value = true
+  try {
+    await adminClawLikeApprovalModelSwitchApi(editClawApprovalModelId.value ?? '')
+    ui.success('保存成功')
+    editClawApprovalDialogVisible.value = false
+    fetchConfig()
+  } catch (error) {
+    console.error('保存配置失败:', error)
+  } finally {
+    editClawApprovalLoading.value = false
   }
 }
 
@@ -242,6 +288,23 @@ onMounted(() => {
           </div>
         </div>
 
+        <div class="config-item">
+          <div class="config-info">
+            <div class="config-label">Claw-like 审批模型</div>
+            <div class="config-value">
+              <a-tag v-if="clawApprovalModelId" color="success">{{ clawApprovalModelName }}</a-tag>
+              <a-tag v-else color="default">未配置</a-tag>
+              <span class="config-hint">用于自动审批模式下判断工具调用的危险性，留空则自动审批模式下所有工具调用都需人工确认</span>
+            </div>
+          </div>
+          <div class="config-action">
+            <a-button type="primary" @click="openEditClawApprovalDialog">
+              <template #icon><EditOutlined /></template>
+              修改
+            </a-button>
+          </div>
+        </div>
+
         <!-- <div class="config-item">
           <div class="config-info">
             <div class="config-label">byn 数字分身系统提示词</div>
@@ -310,6 +373,40 @@ onMounted(() => {
         <div class="edit-label">选择模型（留空则禁用标题自动生成）</div>
         <a-select
           v-model:value="editModelId"
+          :loading="modelsLoading"
+          placeholder="选择模型或清空以禁用"
+          allow-clear
+          show-search
+          :filter-option="
+            (input: string, option: any) => option.label?.toLowerCase().includes(input.toLowerCase())
+          "
+          style="width: 100%"
+        >
+          <a-select-option
+            v-for="model in availableModels"
+            :key="model.id"
+            :value="model.id"
+            :label="getModelDisplayName(model)"
+          >
+            {{ getModelDisplayName(model) }}
+            <span v-if="model.modelDisplayName" class="model-name-hint">（{{ model.modelName }}）</span>
+          </a-select-option>
+        </a-select>
+      </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="editClawApprovalDialogVisible"
+      title="修改 Claw-like 审批模型"
+      :confirm-loading="editClawApprovalLoading"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="handleClawApprovalModelSave"
+    >
+      <div class="edit-group">
+        <div class="edit-label">选择模型（留空则自动审批模式下所有工具调用都需人工确认）</div>
+        <a-select
+          v-model:value="editClawApprovalModelId"
           :loading="modelsLoading"
           placeholder="选择模型或清空以禁用"
           allow-clear

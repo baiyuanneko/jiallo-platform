@@ -471,6 +471,19 @@ public class AdminController {
     }
 
     @Operation(
+            summary = "设置 Claw-like 审批模型",
+            description = "设置 Claw-like 自动审批模式下用于判断工具调用危险性的模型ID，传入空字符串表示禁用 LLM 审批（全部降级人工确认）",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("config/clawLikeApprovalModelSwitch")
+    public R<Void> clawLikeApprovalModelSwitch(
+            @Parameter(description = "模型ID，空字符串表示禁用 LLM 审批", required = true)
+            @RequestParam("modelId") String modelId) {
+        sysConfigService.setConfigValue("clawLikeApprovalModelId", modelId);
+        return R.ok();
+    }
+
+    @Operation(
             summary = "获取 byn 数字分身系统提示词",
             description = "获取 digitalByn (agentType=2) 的系统提示词配置",
             security = @SecurityRequirement(name = "bearer-jwt")

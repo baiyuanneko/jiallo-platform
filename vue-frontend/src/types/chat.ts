@@ -36,6 +36,13 @@ export enum ClawSecurityLevel {
   FULL = 2,
 }
 
+/** Claw-like 审批模式：0=自动审批（LLM 判断）、1=绕过审批、2=人工审批 */
+export enum ClawApprovalMode {
+  AUTO = 0,
+  BYPASS = 1,
+  MANUAL = 2,
+}
+
 // ==================== 工具内容解析类型 ====================
 
 /** type=2 assistant 消息中 toolContent 里每个工具调用的格式 */
@@ -73,6 +80,10 @@ export interface ChatStreamVo {
   enabledAgenticSkills?: string[]
   reasoningEffort?: string
   ragLibraryIds?: string[]
+  /** 仅 claw-like 模式使用：用户选择的安全级别（后端钳制为 min(请求值, 授权值)） */
+  clawSecurityLevel?: number
+  /** 仅 claw-like 模式使用：审批模式 */
+  clawApprovalMode?: number
 }
 
 export interface SessionsPageVo {
@@ -217,6 +228,44 @@ export interface PyodideToolResultVo {
   exitCode: number | null
 }
 
+// ==================== Claw-like 工具审批相关类型 ====================
+
+/** SSE claw_tool_approval_request 事件数据 */
+export interface ClawToolApprovalRequest {
+  requestId: string
+  name: string
+  arguments: string
+}
+
+/** POST /clawToolApproval 请求体 */
+export interface ClawToolApprovalVo {
+  requestId: string
+  approved: boolean
+}
+
+// ==================== Claw-like 文件管理相关类型 ====================
+
+/** 文件列表条目（工作区/服务器文件 API 返回） */
+export interface ClawFileEntry {
+  name: string
+  isDir: boolean
+  size: number
+  updateTime: string
+}
+
+/** 重命名请求体 */
+export interface ClawFileRenameVo {
+  sessionId?: string
+  path: string
+  newName: string
+}
+
+/** 删除请求体 */
+export interface ClawFileDeleteVo {
+  sessionId?: string
+  path: string
+}
+
 // ==================== SSE 事件数据类型 ====================
 
 export interface SseDoneEvent {
@@ -274,6 +323,7 @@ export type RModelsPage = ApiResponse<PageResult<SysLlmModel>>
 export type RModelsList = ApiResponse<SysLlmModel[]>
 export type RAvailableAgentTypes = ApiResponse<number[]>
 export type RClawSecurityLevel = ApiResponse<number>
+export type RClawFileList = ApiResponse<ClawFileEntry[]>
 export type RShareSession = ApiResponse<string>
 export type RSharedSessionDetail = ApiResponse<SharedSessionDetail>
 export type RSharedSessionsPage = ApiResponse<PageResult<SharedSessionItem>>

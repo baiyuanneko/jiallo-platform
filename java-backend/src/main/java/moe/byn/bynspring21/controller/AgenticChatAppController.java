@@ -118,6 +118,13 @@ public class AgenticChatAppController {
         return R.ok();
     }
 
+    @Operation(summary = "提交 Claw-like 工具调用人工审批结果")
+    @PostMapping("clawToolApproval")
+    public R<Void> submitClawToolApproval(@Validated @RequestBody AgenticChatAppVo.ClawToolApprovalVo vo) {
+        agenticChatAppService.submitClawToolApproval(vo);
+        return R.ok();
+    }
+
     @Operation(summary = "分享会话")
     @PostMapping("sessions/share")
     public R<String> shareSession(@Validated @RequestBody AgenticChatAppVo.ShareSessionVo vo) {

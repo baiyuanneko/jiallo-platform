@@ -3,7 +3,7 @@
 import axios from 'axios'
 import { getAppConfig } from '@/config/appConfig'
 import { getAccessToken, getTokenExpiry } from '@/utils/auth'
-import type { ChatStreamVo, ToolCall, ToolResponse, ToolExecutionRequest } from '@/types/chat'
+import type { ChatStreamVo, ToolCall, ToolResponse, ToolExecutionRequest, ClawToolApprovalRequest } from '@/types/chat'
 
 export interface SseCallbacks {
   onStreamUniqueKey: (key: string) => void
@@ -12,6 +12,8 @@ export interface SseCallbacks {
   onToolCall: (data: ToolCall) => void
   onToolResult: (data: ToolResponse) => void
   onToolExecutionRequest: (data: ToolExecutionRequest) => void
+  /** Claw-like 工具调用需要人工审批（后端阻塞等待 /clawToolApproval 回传） */
+  onClawToolApprovalRequest?: (data: ClawToolApprovalRequest) => void
   onSessionTitle: (sessionId: string, sessionName: string) => void
   onDone: (sessionId: string, messageId: string, userMessageId: string, promptTokenCount?: number | null, completionTokenCount?: number | null, reasoningTokenCount?: number | null, cachedTokenCount?: number | null) => void
   onError: (msg: string) => void
@@ -212,6 +214,14 @@ export function createSseConnection(vo: ChatStreamVo, callbacks: SseCallbacks): 
           callbacks.onToolExecutionRequest(JSON.parse(data))
         } catch {
           console.error('Failed to parse tool_execution_request event:', data)
+        }
+        break
+
+      case 'claw_tool_approval_request':
+        try {
+          callbacks.onClawToolApprovalRequest?.(JSON.parse(data))
+        } catch {
+          console.error('Failed to parse claw_tool_approval_request event:', data)
         }
         break
 

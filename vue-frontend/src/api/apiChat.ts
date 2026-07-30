@@ -20,6 +20,10 @@ import type {
   RShareSession,
   RSharedSessionDetail,
   RSharedSessionsPage,
+  ClawToolApprovalVo,
+  RClawFileList,
+  ClawFileRenameVo,
+  ClawFileDeleteVo,
 } from '@/types/chat'
 import type { RVoid } from '@/types/user'
 
@@ -164,4 +168,110 @@ export function getSharedSessionsPageApi(data: SessionsPageVo) {
 /** 取消指定聊天流，本轮对话不会被保存到数据库 */
 export function stopChatStreamApi(streamUniqueKey: string) {
   return request.post('/agenticChatApp/stopChatStream', { streamUniqueKey })
+}
+
+// ==================== Claw-like 工具审批 ====================
+
+/**
+ * 回传 Claw-like 工具调用的人工审批结果
+ */
+export function postClawToolApprovalApi(data: ClawToolApprovalVo) {
+  return request.post<RVoid>('/agenticChatApp/clawToolApproval', data)
+}
+
+// ==================== Claw-like 工作区文件管理 ====================
+
+/**
+ * 列出工作区某目录下的文件（单层）
+ * path 为工作区相对路径
+ */
+export function listClawFilesApi(sessionId: string, path: string) {
+  return request.get<RClawFileList>('/agenticChatApp/clawFiles/list', {
+    params: { sessionId, path },
+  })
+}
+
+/**
+ * 下载工作区文件（原始字节）
+ */
+export function downloadClawFileApi(sessionId: string, path: string) {
+  return request.get<Blob>('/agenticChatApp/clawFiles/download', {
+    params: { sessionId, path },
+    responseType: 'blob',
+  })
+}
+
+/**
+ * 上传文件到工作区某目录
+ */
+export function uploadClawFileApi(sessionId: string, path: string, file: File) {
+  const formData = new FormData()
+  formData.append('sessionId', sessionId)
+  formData.append('path', path)
+  formData.append('file', file)
+  return request.post<RVoid>('/agenticChatApp/clawFiles/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/**
+ * 重命名工作区文件/目录
+ */
+export function renameClawFileApi(data: ClawFileRenameVo) {
+  return request.post<RVoid>('/agenticChatApp/clawFiles/rename', data)
+}
+
+/**
+ * 删除工作区文件/目录（目录递归删除）
+ */
+export function deleteClawFileApi(data: ClawFileDeleteVo) {
+  return request.post<RVoid>('/agenticChatApp/clawFiles/delete', data)
+}
+
+// ==================== Claw-like 服务器文件管理（需完全访问级别） ====================
+
+/**
+ * 列出服务器某目录下的文件（单层）
+ * path 为服务器绝对路径（默认 /）
+ */
+export function listClawServerFilesApi(path: string) {
+  return request.get<RClawFileList>('/agenticChatApp/clawServerFiles/list', {
+    params: { path },
+  })
+}
+
+/**
+ * 下载服务器文件（原始字节）
+ */
+export function downloadClawServerFileApi(path: string) {
+  return request.get<Blob>('/agenticChatApp/clawServerFiles/download', {
+    params: { path },
+    responseType: 'blob',
+  })
+}
+
+/**
+ * 上传文件到服务器某目录
+ */
+export function uploadClawServerFileApi(path: string, file: File) {
+  const formData = new FormData()
+  formData.append('path', path)
+  formData.append('file', file)
+  return request.post<RVoid>('/agenticChatApp/clawServerFiles/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/**
+ * 重命名服务器文件/目录
+ */
+export function renameClawServerFileApi(data: ClawFileRenameVo) {
+  return request.post<RVoid>('/agenticChatApp/clawServerFiles/rename', data)
+}
+
+/**
+ * 删除服务器文件/目录（目录递归删除）
+ */
+export function deleteClawServerFileApi(data: ClawFileDeleteVo) {
+  return request.post<RVoid>('/agenticChatApp/clawServerFiles/delete', data)
 }

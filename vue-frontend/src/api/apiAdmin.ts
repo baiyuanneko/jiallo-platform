@@ -440,6 +440,16 @@ export function adminSetClawLikePromptApi(prompt: string) {
   return request.post<RVoid>('/admin/config/clawLikeSystemPrompt', { prompt })
 }
 
+/**
+ * 设置 Claw-like 审批模型（自动审批模式下判断工具调用危险性）
+ * 传入空字符串表示禁用 LLM 审批（自动审批模式全部降级为人工确认）
+ */
+export function adminClawLikeApprovalModelSwitchApi(modelId: string) {
+  return request.post<RVoid>('/admin/config/clawLikeApprovalModelSwitch', null, {
+    params: { modelId },
+  })
+}
+
 // ==================== AgentType 授权管理 API ====================
 
 /**

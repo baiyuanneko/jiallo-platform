@@ -35,6 +35,8 @@ public interface AgenticChatAppService {
 
     void submitPyodideToolResult(PyodideToolResultVo vo);
 
+    void submitClawToolApproval(AgenticChatAppVo.ClawToolApprovalVo vo);
+
     Map<String, String> stopChatStream(String streamUniqueKey);
 
     String shareSession(AgenticChatAppVo.ShareSessionVo vo);

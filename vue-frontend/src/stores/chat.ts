@@ -4,7 +4,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
 import { Modal } from 'ant-design-vue'
 import { h } from 'vue'
 import request from '@/utils/request'
-import { getSessionsPageApi, getSessionDetailApi, getAvailableModelsListApi, editMessageApi, deleteMessageApi, renameSessionApi, deleteSessionApi, getAvailableAgentTypesApi, getClawSecurityLevelApi, submitPyodideToolResultApi, shareSessionApi, unshareSessionApi, reshareSessionApi, stopChatStreamApi } from '@/api/apiChat'
+import { getSessionsPageApi, getSessionDetailApi, getAvailableModelsListApi, editMessageApi, deleteMessageApi, renameSessionApi, deleteSessionApi, getAvailableAgentTypesApi, getClawSecurityLevelApi, submitPyodideToolResultApi, postClawToolApprovalApi, shareSessionApi, unshareSessionApi, reshareSessionApi, stopChatStreamApi } from '@/api/apiChat'
 import { createSseConnection, type SseCallbacks } from '@/utils/sse'
 import { ui } from '@/utils/ui'
 import { useUserStore } from '@/stores/user'
@@ -13,6 +13,7 @@ import { usePyodide } from '@/composables/usePyodide'
 import {
   MessageType,
   AgentType,
+  ClawApprovalMode,
   DEFAULT_ENABLED_TOOLS as DEFAULT_TOOLS,
 } from '@/types/chat'
 import type {
@@ -24,6 +25,7 @@ import type {
   ToolCall,
   ToolResponse,
   ToolExecutionRequest,
+  ClawToolApprovalRequest,
   ModelType,
 } from '@/types/chat'
 
@@ -69,6 +71,8 @@ export interface ChatTab {
   id: string
   sessionId: string | null
   sessionName: string
+  /** 已加载会话的 agentType，用于防止跨模式会话泄漏（claw-like 与普通会话隔离） */
+  agentType?: number
   isPreview: boolean
   isLoading: boolean
   messages: AgenticChatMessage[]
@@ -152,7 +156,12 @@ const selectedRagReferences = ref<{ turnIndex: number; items: RagSearchResultIte
 const ragModuleAuthorized = ref(false)
 const clawLikeAuthorized = ref(false)
 const isClawLikeMode = ref(false)
+/** 后端授权的 Claw-like 安全级别（生效上限） */
 const clawSecurityLevel = ref(0)
+/** 用户选择的安全级别（运行时状态，随请求发送，后端钳制为 min(选择值, 授权值)） */
+const clawSelectedLevel = ref(0)
+/** 用户选择的审批模式（运行时状态，随请求发送） */
+const clawApprovalMode = ref<ClawApprovalMode>(ClawApprovalMode.AUTO)
 /** 进入 claw-like 模式前的 agentType，退出时恢复 */
 let agentTypeBeforeClawLike: AgentType | null = null
   const sidebarVisible = ref(true)
@@ -297,6 +306,29 @@ let agentTypeBeforeClawLike: AgentType | null = null
     } catch {
       clawSecurityLevel.value = 0
     }
+    // 用户选择级别默认取授权级别
+    clawSelectedLevel.value = clawSecurityLevel.value
+  }
+
+  /** 公共守卫：判断给定 agentType 的会话/tab 是否与当前模式匹配（undefined 视为两种模式都匹配） */
+  function agentTypeMatchesMode(agentType: number | undefined): boolean {
+    if (agentType === undefined) return true
+    return (agentType === AgentType.CLAW_LIKE) === isClawLikeMode.value
+  }
+
+  /** 切换模式后，若当前激活 tab 属于另一模式的会话则切到同模式空白 tab（优先复用，没有再新建），避免跨模式会话泄漏 */
+  function ensureActiveTabMatchesMode() {
+    const tab = getActiveTab()
+    if (!tab || !tab.sessionId || tab.agentType === undefined) return
+    if (agentTypeMatchesMode(tab.agentType)) return
+    // 优先复用已存在的同模式空白 tab，避免反复切换模式累积空白 tab
+    const reusable = tabs.value.find((t) => !t.sessionId && agentTypeMatchesMode(t.agentType))
+    if (reusable) {
+      activeTabId.value = reusable.id
+      if (reusable.modelId) currentModelId.value = reusable.modelId
+      return
+    }
+    startNewSession()
   }
 
   function enterClawLikeMode() {
@@ -304,6 +336,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
     isClawLikeMode.value = true
     agentTypeBeforeClawLike = currentAgentType.value
     currentAgentType.value = AgentType.CLAW_LIKE
+    ensureActiveTabMatchesMode()
   }
 
   function exitClawLikeMode() {
@@ -313,6 +346,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
       currentAgentType.value = agentTypeBeforeClawLike
       agentTypeBeforeClawLike = null
     }
+    ensureActiveTabMatchesMode()
   }
 
   function pushNewTab(sessionId: string | null, sessionName: string, isPreview: boolean): ChatTab {
@@ -393,6 +427,8 @@ let agentTypeBeforeClawLike: AgentType | null = null
         const tab = getActiveTab()!
         tab.messages = s.messages || []
         tab.sessionName = s.sessionName
+        // 记录会话 agentType，用于跨模式会话隔离
+        tab.agentType = s.agentType
         const restoredTools = s.enabledTools?.length ? [...s.enabledTools] : [...DEFAULT_TOOLS]
         tab.enabledTools = !ragModuleAuthorized.value ? restoredTools.filter(t => t !== 'rag_knowledge_base') : restoredTools
         if (s.modelId) {
@@ -413,6 +449,10 @@ let agentTypeBeforeClawLike: AgentType | null = null
   }
 
   async function handleSidebarSingleClick(sessionId: string) {
+    // 防御：会话 agentType 与当前模式不符时忽略（防止跨模式会话泄漏）
+    const session = sessions.value.find((s) => s.id === sessionId)
+    if (session && !agentTypeMatchesMode(session.agentType)) return
+
     const existing = tabs.value.find(t => t.sessionId === sessionId)
     if (existing) {
       activeTabId.value = existing.id
@@ -435,6 +475,10 @@ let agentTypeBeforeClawLike: AgentType | null = null
   }
 
   async function handleSidebarDoubleClick(sessionId: string) {
+    // 防御：会话 agentType 与当前模式不符时忽略（防止跨模式会话泄漏）
+    const session = sessions.value.find((s) => s.id === sessionId)
+    if (session && !agentTypeMatchesMode(session.agentType)) return
+
     const existing = tabs.value.find(t => t.sessionId === sessionId)
     if (existing) {
       existing.isPreview = false
@@ -498,9 +542,11 @@ let agentTypeBeforeClawLike: AgentType | null = null
 
   function switchToTab(tabId: string) {
     if (activeTabId.value === tabId) return
+    // 防御：目标 tab 的 agentType 与当前模式不符时忽略（防止跨模式会话泄漏）
+    const target = tabs.value.find((t) => t.id === tabId)
+    if (!target || !agentTypeMatchesMode(target.agentType)) return
     activeTabId.value = tabId
-    const tab = getActiveTab()
-    if (tab?.modelId) currentModelId.value = tab.modelId
+    if (target.modelId) currentModelId.value = target.modelId
   }
 
   function closeTab(tabId: string) {
@@ -568,6 +614,12 @@ let agentTypeBeforeClawLike: AgentType | null = null
       enabledAgenticTools: isClawLikeMode.value ? [] : tab.enabledTools,
       enabledAgenticSkills: tab.enabledSkills,
       ragLibraryIds: ragLibraryIds.value,
+    }
+
+    // claw-like 模式带上用户选择的安全级别与审批模式（后端钳制生效级别）
+    if (isClawLikeMode.value) {
+      vo.clawSecurityLevel = clawSelectedLevel.value
+      vo.clawApprovalMode = clawApprovalMode.value
     }
 
     if (reasoningEffort.value) {
@@ -845,10 +897,16 @@ let agentTypeBeforeClawLike: AgentType | null = null
           tab.sessionId = sessionId
         }
 
+        // 标记 tab 所属模式，用于跨模式会话隔离
+        tab.agentType = vo.agentType
+
         tab.streamingMessage = null
         tab.isStreaming = false
         tab.abortController = null
         tab.streamUniqueKey = null
+
+        // 流已结束，销毁挂起的人工审批 Modal
+        destroyApprovalModals()
 
         refreshSessions()
       },
@@ -856,6 +914,9 @@ let agentTypeBeforeClawLike: AgentType | null = null
       onError(msg: string) {
         // 防重复：isStreaming 已被置 false 说明已处理过
         if (!tab.isStreaming) return
+
+        // 流出错，销毁挂起的人工审批 Modal
+        destroyApprovalModals()
 
         // 切到后台再切回导致的网络中断 → 保留已有回复 + 追加中断提示
         if (msg === '__BACKGROUND_INTERRUPT__') {
@@ -1002,9 +1063,61 @@ let agentTypeBeforeClawLike: AgentType | null = null
           return submitPyodideToolResultApi({ requestId, ...result })
         })
       },
+
+      /** Claw-like 工具调用人工审批：弹确认框，确认/拒绝后回传审批结果 */
+      onClawToolApprovalRequest(data: ClawToolApprovalRequest) {
+        const { requestId, name, arguments: args } = data
+        const argsSummary = args.length > 500 ? args.slice(0, 500) + '…' : args
+
+        const submitApproval = (approved: boolean) => {
+          postClawToolApprovalApi({ requestId, approved }).catch(() => {
+            ui.error('审批结果提交失败，该操作将被视为拒绝')
+          })
+        }
+
+        const modal = Modal.confirm({
+          title: '工具调用审批',
+          content: () =>
+            h('div', { style: 'line-height: 1.6; font-size: 13px; color: #595959;' }, [
+              h('p', { style: 'margin: 0 0 8px;' }, [
+                'AI 请求执行工具：',
+                h('span', { style: 'color: #262626; font-weight: 600;' }, name),
+              ]),
+              h('pre', {
+                style:
+                  'margin: 0; padding: 8px 10px; background: #f5f5f5; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 12px;',
+              }, argsSummary || '（无参数）'),
+            ]),
+          okText: '允许执行',
+          cancelText: '拒绝',
+          centered: true,
+          onOk: () => {
+            removeApprovalModal(modal)
+            submitApproval(true)
+          },
+          onCancel: () => {
+            removeApprovalModal(modal)
+            submitApproval(false)
+          },
+        })
+        approvalModals.push(modal)
+      },
     }
 
     tab.abortController = createSseConnection(vo, callbacks)
+  }
+
+  /** 进行中的 Claw-like 审批 Modal 实例（可同时多个，流结束时统一销毁） */
+  const approvalModals: Array<{ destroy: () => void }> = []
+
+  function removeApprovalModal(modal: { destroy: () => void }) {
+    const idx = approvalModals.indexOf(modal)
+    if (idx >= 0) approvalModals.splice(idx, 1)
+  }
+
+  function destroyApprovalModals() {
+    approvalModals.forEach((m) => m.destroy())
+    approvalModals.length = 0
   }
 
   /** 通知服务端停止当前流，并清理客户端状态 */
@@ -1012,6 +1125,8 @@ let agentTypeBeforeClawLike: AgentType | null = null
     const tab = getActiveTab()
     if (!tab) return
     tab.stopRequested = true
+    // 流即将结束，销毁挂起的人工审批 Modal
+    destroyApprovalModals()
     // 通知服务端取消 LLM 调用，服务端会持久化当前已流式内容，
     // 并通过 SSE 发送 sessionTitle / done 事件
     if (tab.streamUniqueKey) {
@@ -1258,6 +1373,8 @@ let agentTypeBeforeClawLike: AgentType | null = null
     clawLikeAuthorized,
     isClawLikeMode,
     clawSecurityLevel,
+    clawSelectedLevel,
+    clawApprovalMode,
     sidebarVisible,
     sidebarCollapsed,
     reasoningEffort,

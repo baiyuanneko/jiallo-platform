@@ -5,13 +5,15 @@ import { useFileSidebarStore } from '@/stores/fileSidebar'
 import { useChatStore } from '@/stores/chat'
 import { usePyodide } from '@/composables/usePyodide'
 import { ui } from '@/utils/ui'
+import { ClawSecurityLevel } from '@/types/chat'
 import FileTree from './FileTree.vue'
+import ClawFilePanel from './ClawFilePanel.vue'
 
 const store = useFileSidebarStore()
 const chatStore = useChatStore()
 const pyodide = usePyodide()
 
-type ViewType = 'python_env' | 'jiallo_kb' | 'rag_references'
+type ViewType = 'python_env' | 'jiallo_kb' | 'rag_references' | 'claw_workspace' | 'claw_server'
 
 const selectedView = ref<ViewType>('python_env')
 const refreshCounter = ref(0)
@@ -55,11 +57,39 @@ watch(() => chatStore.selectedRagReferences, (refs) => {
   }
 })
 
-const viewOptions = computed(() => [
-  { value: 'python_env' as ViewType, label: pythonEnvLabel.value },
-  { value: 'jiallo_kb' as ViewType, label: ragLabel.value },
-  { value: 'rag_references' as ViewType, label: ragRefLabel.value },
-])
+const viewOptions = computed(() => {
+  // claw-like 模式：工作区文件列表（默认）+ 服务器文件列表（仅完全访问级别）
+  if (chatStore.isClawLikeMode) {
+    const options = [{ value: 'claw_workspace' as ViewType, label: '当前用户工作区文件列表' }]
+    if (chatStore.clawSecurityLevel === ClawSecurityLevel.FULL) {
+      options.push({ value: 'claw_server' as ViewType, label: '服务器文件列表' })
+    }
+    return options
+  }
+  return [
+    { value: 'python_env' as ViewType, label: pythonEnvLabel.value },
+    { value: 'jiallo_kb' as ViewType, label: ragLabel.value },
+    { value: 'rag_references' as ViewType, label: ragRefLabel.value },
+  ]
+})
+
+// 模式切换与安全级别变化时校正选中视图
+watch(
+  [() => chatStore.isClawLikeMode, () => chatStore.clawSecurityLevel],
+  ([isClaw, level]) => {
+    if (isClaw) {
+      if (
+        selectedView.value !== 'claw_workspace' &&
+        (selectedView.value !== 'claw_server' || level !== ClawSecurityLevel.FULL)
+      ) {
+        selectedView.value = 'claw_workspace'
+      }
+    } else if (selectedView.value === 'claw_workspace' || selectedView.value === 'claw_server') {
+      selectedView.value = 'python_env'
+    }
+  },
+  { immediate: true },
+)
 
 function handleRefresh() {
   refreshCounter.value++
@@ -165,7 +195,9 @@ async function handleFileUpload(e: Event) {
     </button>
 
     <div class="file-sidebar__content">
-      <div v-if="selectedView === 'jiallo_kb'" class="file-sidebar__rag-chunk">
+      <ClawFilePanel v-if="selectedView === 'claw_workspace'" key="claw-workspace" scope="workspace" />
+      <ClawFilePanel v-else-if="selectedView === 'claw_server'" key="claw-server" scope="server" />
+      <div v-else-if="selectedView === 'jiallo_kb'" class="file-sidebar__rag-chunk">
         <template v-if="chatStore.selectedRagChunk">
           <div class="rag-chunk__header">
             <a-tag color="blue">{{ chatStore.selectedRagChunk.libraryName }}</a-tag>

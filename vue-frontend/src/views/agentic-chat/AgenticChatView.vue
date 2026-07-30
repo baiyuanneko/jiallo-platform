@@ -91,6 +91,14 @@ watch(
       const activeTab = chatStore.getActiveTab()
       if (!activeTab || activeTab.sessionId !== id) {
         chatStore.handleSidebarSingleClick(id)
+        // sessionId 与当前模式不符时会被守卫忽略：补一个空白会话，并清掉非法的 URL param
+        if (chatStore.getActiveTab()?.sessionId !== id) {
+          if (chatStore.tabs.length === 0) {
+            chatStore.startNewSession()
+          }
+          isRouteDrivenUpdate.value = true
+          router.replace({ name: route.name ?? 'agenticChat' })
+        }
       }
     } else {
       // No session in URL - don't auto-navigate away if tabs exist
@@ -145,6 +153,9 @@ function closeSidebar() {
           <ArrowLeftOutlined />
         </button>
         <span class="agentic-chat__mobile-title">{{ chatStore.isClawLikeMode ? 'Jiallo Claw' : 'Agentic Chat' }}</span>
+      </div>
+      <div v-if="chatStore.isClawLikeMode" class="agentic-chat__claw-banner">
+        您当前正在Jiallo Claw应用下，AI将有权限操作服务器上的实际文件和服务等，请尽量谨慎操作，在非必要的情况下不要使用“完全访问（绕过审批）”模式。
       </div>
       <ChatTabBar />
       <ChatPanel />
@@ -217,6 +228,16 @@ function closeSidebar() {
 
 .agentic-chat__mobile-header {
   display: none;
+}
+
+.agentic-chat__claw-banner {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: #fffbe6;
+  border-bottom: 1px solid #ffe58f;
+  color: #ad6800;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .agentic-chat__back-btn {

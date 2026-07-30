@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { MoreOutlined } from '@ant-design/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { usePreferences } from '@/composables/usePreferences'
+import { AgentType } from '@/types/chat'
 
 const chatStore = useChatStore()
 const { effectiveMultiTab } = usePreferences()
+
+// 按模式过滤显示的 tab：agentType 为 undefined 的空白 tab 两种模式都显示，
+// claw 模式只显示 claw 会话 tab，非 claw 模式只显示普通会话 tab（防止跨模式激活）
+const visibleTabs = computed(() =>
+  chatStore.tabs.filter(
+    (t) =>
+      t.agentType === undefined ||
+      (t.agentType === AgentType.CLAW_LIKE) === chatStore.isClawLikeMode,
+  ),
+)
 
 const draggedIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
@@ -34,7 +45,16 @@ function onDrop(e: DragEvent, toIndex: number) {
   e.preventDefault()
   const from = draggedIndex.value
   if (from !== null && from !== toIndex) {
-    chatStore.reorderTabs(from, toIndex)
+    // visibleTabs 是过滤后的列表，拖拽下标需换算回 tabs 真实下标
+    const fromTab = visibleTabs.value[from]
+    const toTab = visibleTabs.value[toIndex]
+    if (fromTab && toTab) {
+      const realFrom = chatStore.tabs.findIndex((t) => t.id === fromTab.id)
+      const realTo = chatStore.tabs.findIndex((t) => t.id === toTab.id)
+      if (realFrom >= 0 && realTo >= 0) {
+        chatStore.reorderTabs(realFrom, realTo)
+      }
+    }
   }
   draggedIndex.value = null
   dragOverIndex.value = null
@@ -47,10 +67,10 @@ function onDragEnd() {
 </script>
 
 <template>
-  <div v-if="effectiveMultiTab && chatStore.tabs.length > 0" class="chat-tab-bar">
+  <div v-if="effectiveMultiTab && visibleTabs.length > 0" class="chat-tab-bar">
     <div class="chat-tab-bar__scroll">
       <div
-        v-for="(tab, index) in chatStore.tabs"
+        v-for="(tab, index) in visibleTabs"
         :key="tab.id"
         draggable="true"
         class="chat-tab-bar__tab"

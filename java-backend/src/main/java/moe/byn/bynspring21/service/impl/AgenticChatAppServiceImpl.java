@@ -14,8 +14,10 @@ import moe.byn.bynspring21.entity.SysLlmModel;
 import moe.byn.bynspring21.entity.User;
 import moe.byn.bynspring21.entity.AgenticChatSession;
 import moe.byn.bynspring21.entity.base.AgenticToolEnum;
+import moe.byn.bynspring21.entity.base.ClawApprovalMode;
 import moe.byn.bynspring21.entity.base.ClawSecurityLevel;
 import moe.byn.bynspring21.entity.tool.BochaWebSearch;
+import moe.byn.bynspring21.entity.tool.ClawApprovalPendingManager;
 import moe.byn.bynspring21.entity.tool.ClawToolContext;
 import moe.byn.bynspring21.entity.tool.MemoryTools;
 import moe.byn.bynspring21.entity.tool.RagKnowledgeBaseTool;
@@ -36,6 +38,7 @@ import moe.byn.bynspring21.service.AgentTypeAvailabilityService;
 import moe.byn.bynspring21.service.AgentTypeGroupAvailabilityService;
 import moe.byn.bynspring21.service.AgenticChatSessionService;
 import moe.byn.bynspring21.service.ChatsessEnabledToolService;
+import moe.byn.bynspring21.service.ClawApprovalJudgeService;
 import moe.byn.bynspring21.service.ClawLikeSecurityLevelService;
 import moe.byn.bynspring21.security.SecurityUtil;
 import moe.byn.bynspring21.service.MinioService;
@@ -184,6 +187,12 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     private ClawLikeSecurityLevelService clawLikeSecurityLevelService;
 
     @Autowired
+    private ClawApprovalJudgeService clawApprovalJudgeService;
+
+    @Autowired
+    private ClawApprovalPendingManager clawApprovalPendingManager;
+
+    @Autowired
     private UserGroupMemberService userGroupMemberService;
 
     @Autowired
@@ -210,6 +219,8 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         List<String> userGroupIds = userGroupMemberService.getUserGroupIds(currentUser.getId());
         // Claw-like 安全级别：在主线程解析（此时有 SecurityContext），供异步段按级别确定工具集与提示词
         final int clawLevel;
+        // Claw-like 审批模式：空或非法值按 AUTO（自动审批）处理
+        final ClawApprovalMode clawApprovalMode;
         if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
             // Claw-like 应用：不检查 agent_type_availability，改查功能模块授权
             if (!featureModuleAvailabilityService.isModuleAvailable(CLAW_LIKE_MODULE_CODE, currentUser.getRoleType(), userGroupIds)) {
@@ -219,10 +230,17 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                 } catch (IOException ignored) {}
                 return emitter;
             }
-            // 生效级别 = 角色授权与所有用户组授权中的最高值，无授权记录为 NONE（纯聊天，不拒绝）
-            clawLevel = clawLikeSecurityLevelService.resolveEffectiveLevel(currentUser.getRoleType(), userGroupIds);
+            // 授权级别 = 角色授权与所有用户组授权中的最高值，无授权记录为 NONE（纯聊天，不拒绝）
+            int authorizedLevel = clawLikeSecurityLevelService.resolveEffectiveLevel(currentUser.getRoleType(), userGroupIds);
+            // 生效级别 = min(请求值, 授权值)，请求值为空时直接使用授权级别
+            clawLevel = vo.getClawSecurityLevel() == null
+                    ? authorizedLevel
+                    : Math.min(vo.getClawSecurityLevel(), authorizedLevel);
+            ClawApprovalMode requestedMode = ClawApprovalMode.fromCode(vo.getClawApprovalMode());
+            clawApprovalMode = requestedMode != null ? requestedMode : ClawApprovalMode.AUTO;
         } else {
             clawLevel = ClawSecurityLevel.NONE.getCode();
+            clawApprovalMode = ClawApprovalMode.AUTO;
             Set<Integer> availableAgentTypes = new HashSet<>(agentTypeAvailabilityService.getAvailableAgentTypes(currentUser.getRoleType()));
             if (!userGroupIds.isEmpty()) {
                 availableAgentTypes.addAll(agentTypeGroupAvailabilityService.getAvailableAgentTypesForGroups(userGroupIds));
@@ -355,6 +373,12 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     );
                     if (session == null) {
                         throw new BynBaseException("会话不存在");
+                    }
+
+                    // claw 分支：已有会话必须是 Claw-like 会话，防止以 claw 模式写入普通会话
+                    if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())
+                            && !CLAW_LIKE_AGENT_TYPE.equals(session.getAgentType())) {
+                        throw new BynBaseException("该会话不是 Claw-like 会话");
                     }
 
                     // 用户指定了新的 modelId/modelType，更新 session 并持久化
@@ -495,7 +519,11 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     }
                 } else {
                     // 手动工具调用循环：ToolCallAdvisor.adviseStream() 在 1.1.2 未实现
-                    var toolCallbacks = agenticToolResolver.resolveToolCallbacks(enabledTools);
+                    // 仅 claw 分支（agentType=3）传入审批 bean，对 Claw-like 专属工具包装审批装饰器
+                    var toolCallbacks = CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())
+                            ? agenticToolResolver.resolveToolCallbacks(enabledTools,
+                                    clawApprovalJudgeService, clawApprovalPendingManager)
+                            : agenticToolResolver.resolveToolCallbacks(enabledTools);
                     ToolCallingManager observableManager = new ObservableToolCallingManager(
                             ToolCallingManager.builder()
                                     .toolCallbackResolver(new StaticToolCallbackResolver(Arrays.asList(toolCallbacks)))
@@ -521,13 +549,13 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     MemoryTools.setContext(userId, vo.getAgentType());
                     // 设置 RAG 知识库工具上下文（scope + libraryIds）
                     ragKnowledgeBaseTool.setContext(vo.getRagLibraryIds(), userId);
-                    // 设置 Claw-like 工具上下文（userId + sessionId）
+                    // 设置 Claw-like 工具上下文（userId + sessionId + 安全级别 + 审批模式 + SSE emitter）
                     if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
                         if (session.getId() == null) {
                             // 新会话提前分配ID（ASSIGN_ID 会沿用已设置的ID），保证工作区目录与最终会话ID一致
                             session.setId(IdWorker.getIdStr());
                         }
-                        ClawToolContext.setContext(userId, session.getId(), clawLevel);
+                        ClawToolContext.setContext(userId, session.getId(), clawLevel, clawApprovalMode.getCode(), emitter);
                     }
                     try {
                         for (int iteration = 0; iteration < 50; iteration++) {
@@ -1353,6 +1381,12 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                 vo.getExitCode()
         );
         pyodideResultPendingManager.completeResult(vo.getRequestId(), userId, result);
+    }
+
+    @Override
+    public void submitClawToolApproval(AgenticChatAppVo.ClawToolApprovalVo vo) {
+        String userId = securityUtil.getUserId();
+        clawApprovalPendingManager.completeApproval(vo.getRequestId(), userId, Boolean.TRUE.equals(vo.getApproved()));
     }
 
     @Override
