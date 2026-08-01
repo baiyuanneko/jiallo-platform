@@ -724,7 +724,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
         }
       },
 
-      onDone(sessionId: string, messageId: string, userMessageId: string, promptTokenCount?: number | null, completionTokenCount?: number | null, reasoningTokenCount?: number | null, cachedTokenCount?: number | null) {
+      onDone(sessionId: string, messageId: string, userMessageId: string, promptTokenCount?: number | null, completionTokenCount?: number | null, reasoningTokenCount?: number | null, cachedTokenCount?: number | null, abortReason?: string | null) {
         const finishedKey = tab.streamUniqueKey
 
         if (tab.streamingMessage) {
@@ -854,6 +854,15 @@ let agentTypeBeforeClawLike: AgentType | null = null
           if (tab.stopRequested && assistantAnswerMsg.textContent !== null) {
             assistantAnswerMsg.textContent += '\n\n> （用户已中止）'
           }
+          // 工具等待超时（Pyodide/人工审批）导致的中止：追加终止原因标记
+          if (abortReason) {
+            const reasonMarker = `\n\n> （${abortReason}）`
+            if (assistantAnswerMsg.textContent !== null) {
+              assistantAnswerMsg.textContent += reasonMarker
+            } else {
+              assistantAnswerMsg.textContent = reasonMarker.trimStart()
+            }
+          }
           tab.messages.push(assistantAnswerMsg)
           tab.stopRequested = false
         }
@@ -899,6 +908,11 @@ let agentTypeBeforeClawLike: AgentType | null = null
 
       onToolExecutionRequest(data: ToolExecutionRequest) {
         const { requestId, code } = data
+        // 捕获发起时的流标识：流已结束（超时中止/用户停止/切流）后，执行结果不再回传也不再落 UI，
+        // 避免迟交结果被前端误展示（后端对未知 requestId 本就幂等 no-op）
+        const streamKeyAtStart = tab.streamUniqueKey
+        const isStreamAlive = () =>
+          tab.isStreaming && tab.streamUniqueKey !== null && tab.streamUniqueKey === streamKeyAtStart
 
         if (tab.streamingMessage) {
           const round = currentRound()
@@ -913,8 +927,10 @@ let agentTypeBeforeClawLike: AgentType | null = null
           const delay = pyodide.isInitialized.value ? 100 : 500
           return new Promise<void>((resolve) => setTimeout(resolve, delay))
         }).then(() => {
+          if (!isStreamAlive()) return null
           return pyodide.executeCode(code)
         }).then((result) => {
+          if (result === null) return
           if (tab.streamingMessage) {
             const round = currentRound()
             round.toolResults.push({
@@ -925,6 +941,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
           }
           return submitPyodideToolResultApi({ requestId, ...result })
         }).catch((err: unknown) => {
+          if (!isStreamAlive()) return
           const result = {
             stdout: null as string | null,
             stderr: null as string | null,

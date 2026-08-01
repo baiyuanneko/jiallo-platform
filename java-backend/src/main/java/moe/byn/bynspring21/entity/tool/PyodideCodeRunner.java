@@ -2,6 +2,7 @@ package moe.byn.bynspring21.entity.tool;
 
 import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
+import moe.byn.bynspring21.exception.ToolWaitTimeoutException;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 @Slf4j
 @Component
@@ -18,19 +20,22 @@ public class PyodideCodeRunner {
 
     private static final ThreadLocal<BiConsumer<String, String>> publisherHolder = new ThreadLocal<>();
     private static final ThreadLocal<String> userIdHolder = new ThreadLocal<>();
+    private static final ThreadLocal<Consumer<String>> abortCallbackHolder = new ThreadLocal<>();
     private static final ThreadLocal<PyodideResultPendingManager.PyodideResult> lastStructuredResult = new ThreadLocal<>();
 
     @Autowired
     private PyodideResultPendingManager pendingManager;
 
-    public static void setContext(BiConsumer<String, String> publisher, String userId) {
+    public static void setContext(BiConsumer<String, String> publisher, String userId, Consumer<String> abortCallback) {
         publisherHolder.set(publisher);
         userIdHolder.set(userId);
+        abortCallbackHolder.set(abortCallback);
     }
 
     public static void clearContext() {
         publisherHolder.remove();
         userIdHolder.remove();
+        abortCallbackHolder.remove();
         lastStructuredResult.remove();
     }
 
@@ -64,8 +69,20 @@ public class PyodideCodeRunner {
         ));
         publisher.accept("tool_execution_request", payload);
 
-        // 阻塞等待前端执行结果
-        PyodideResultPendingManager.PyodideResult result = pendingManager.waitForResult(requestId, TIMEOUT_SECONDS);
+        // 阻塞等待前端执行结果；超时触发流中止回调（整条流随取消链路终止）。
+        // 不能 rethrow——Spring AI 不会吞工具异常，抛出会绕过取消链路直接 fail 流；
+        // 改为把超时文案作为正常工具结果返回，该轮 tool call/result 配对完整落库，
+        // 循环在下一轮 LLM 调用前被 cancelFlag 截停，LLM 不会看到这条文本
+        PyodideResultPendingManager.PyodideResult result;
+        try {
+            result = pendingManager.waitForResult(requestId, TIMEOUT_SECONDS);
+        } catch (ToolWaitTimeoutException e) {
+            Consumer<String> abortCallback = abortCallbackHolder.get();
+            if (abortCallback != null) {
+                abortCallback.accept("代码执行等待超时，对话已终止");
+            }
+            return e.getMessage();
+        }
 
         // 存入 ThreadLocal 供 ObservableToolCallingManager 消费结构化结果
         lastStructuredResult.set(result);

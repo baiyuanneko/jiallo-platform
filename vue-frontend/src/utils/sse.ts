@@ -15,7 +15,7 @@ export interface SseCallbacks {
   /** Claw-like 工具调用需要人工审批（后端阻塞等待 /clawToolApproval 回传） */
   onClawToolApprovalRequest?: (data: ClawToolApprovalRequest) => void
   onSessionTitle: (sessionId: string, sessionName: string) => void
-  onDone: (sessionId: string, messageId: string, userMessageId: string, promptTokenCount?: number | null, completionTokenCount?: number | null, reasoningTokenCount?: number | null, cachedTokenCount?: number | null) => void
+  onDone: (sessionId: string, messageId: string, userMessageId: string, promptTokenCount?: number | null, completionTokenCount?: number | null, reasoningTokenCount?: number | null, cachedTokenCount?: number | null, abortReason?: string | null) => void
   onError: (msg: string) => void
 }
 
@@ -250,6 +250,7 @@ export function createSseConnection(
             parsed.completionTokenCount ?? null,
             parsed.reasoningTokenCount ?? null,
             parsed.cachedTokenCount ?? null,
+            parsed.abortReason ?? null,
           )
         } catch {
           callbacks.onDone('', '', '')

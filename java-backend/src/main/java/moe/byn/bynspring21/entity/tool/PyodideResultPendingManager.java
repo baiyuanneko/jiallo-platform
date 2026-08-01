@@ -2,6 +2,7 @@ package moe.byn.bynspring21.entity.tool;
 
 import lombok.extern.slf4j.Slf4j;
 import moe.byn.bynspring21.exception.BynBaseException;
+import moe.byn.bynspring21.exception.ToolWaitTimeoutException;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -49,7 +50,7 @@ public class PyodideResultPendingManager {
     }
 
     /**
-     * 阻塞等待结果，超时后抛异常
+     * 阻塞等待结果，超时后抛 ToolWaitTimeoutException（工具层捕获后触发流中止）
      */
     public PyodideResult waitForResult(String requestId, long timeoutSeconds) {
         PendingEntry entry = pendingMap.get(requestId);
@@ -59,7 +60,7 @@ public class PyodideResultPendingManager {
         try {
             return entry.getFuture().get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            throw new BynBaseException("Pyodide 代码执行超时（" + timeoutSeconds + "秒）");
+            throw new ToolWaitTimeoutException("Pyodide 代码执行等待超时（" + timeoutSeconds + "秒），本轮对话已终止");
         } catch (Exception e) {
             throw new BynBaseException("Pyodide 代码执行异常: " + e.getMessage());
         } finally {

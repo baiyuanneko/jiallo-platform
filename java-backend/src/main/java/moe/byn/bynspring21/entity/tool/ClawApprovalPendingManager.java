@@ -2,6 +2,7 @@ package moe.byn.bynspring21.entity.tool;
 
 import lombok.extern.slf4j.Slf4j;
 import moe.byn.bynspring21.exception.BynBaseException;
+import moe.byn.bynspring21.exception.ToolWaitTimeoutException;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -12,7 +13,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Claw-like 工具调用人工审批 pending 管理器：工具执行线程创建 pending 并阻塞等待，
- * 前端通过回传端点提交审批结果完成 future，超时视为拒绝
+ * 前端通过回传端点提交审批结果完成 future，超时抛 ToolWaitTimeoutException 中止对话流
  */
 @Slf4j
 @Component
@@ -50,7 +51,8 @@ public class ClawApprovalPendingManager {
     }
 
     /**
-     * 阻塞等待审批结果，超时或异常均视为拒绝
+     * 阻塞等待审批结果，超时抛 ToolWaitTimeoutException（工具层捕获后触发流中止）；
+     * 其他异常仍视为拒绝
      */
     public boolean waitForApproval(String requestId, long timeoutSeconds) {
         PendingEntry entry = pendingMap.get(requestId);
@@ -60,8 +62,8 @@ public class ClawApprovalPendingManager {
         try {
             return Boolean.TRUE.equals(entry.getFuture().get(timeoutSeconds, TimeUnit.SECONDS));
         } catch (TimeoutException e) {
-            log.warn("Claw approval 等待超时（{}秒），视为拒绝: requestId={}", timeoutSeconds, requestId);
-            return false;
+            log.warn("Claw approval 等待超时（{}秒），中止对话流: requestId={}", timeoutSeconds, requestId);
+            throw new ToolWaitTimeoutException("等待人工审批超时（" + timeoutSeconds + "秒），本轮对话已终止");
         } catch (Exception e) {
             log.warn("Claw approval 等待异常，视为拒绝: requestId={}, error={}", requestId, e.getMessage());
             return false;

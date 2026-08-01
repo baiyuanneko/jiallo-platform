@@ -95,6 +95,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.UUID;
 
 @Slf4j
@@ -313,6 +315,12 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         // 检查并发流数限制（每用户最多3个）
         ConcurrentHashMap<String, AtomicBoolean> userFlags;
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        // 工具等待超时（Pyodide/人工审批）触发的中止原因，非空时随 done 事件发给前端
+        AtomicReference<String> abortReason = new AtomicReference<>(null);
+        Consumer<String> abortStream = reason -> {
+            abortReason.set(reason);
+            cancelFlag.set(true);
+        };
         synchronized (cancellationFlags) {
             userFlags = cancellationFlags.computeIfAbsent(userId, k -> new ConcurrentHashMap<>());
             if (userFlags.size() >= 3) {
@@ -552,19 +560,19 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
 
                     List<Message> workingMessages = new ArrayList<>(messages);
 
-                    // 设置 Pyodide 工具上下文（LiveStream 事件发布器 + userId）
-                    PyodideCodeRunner.setContext(liveStream::publish, userId);
+                    // 设置 Pyodide 工具上下文（LiveStream 事件发布器 + userId + 超时中止回调）
+                    PyodideCodeRunner.setContext(liveStream::publish, userId, abortStream);
                     // 设置 Memory 工具上下文（userId + agentType）
                     MemoryTools.setContext(userId, vo.getAgentType());
                     // 设置 RAG 知识库工具上下文（scope + libraryIds）
                     ragKnowledgeBaseTool.setContext(vo.getRagLibraryIds(), userId);
-                    // 设置 Claw-like 工具上下文（userId + sessionId + 安全级别 + 审批模式 + SSE emitter）
+                    // 设置 Claw-like 工具上下文（userId + sessionId + 安全级别 + 审批模式 + SSE emitter + 超时中止回调）
                     if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
                         if (session.getId() == null) {
                             // 新会话提前分配ID（ASSIGN_ID 会沿用已设置的ID），保证工作区目录与最终会话ID一致
                             session.setId(IdWorker.getIdStr());
                         }
-                        ClawToolContext.setContext(userId, session.getId(), clawLevel, clawApprovalMode.getCode(), liveStream::publish);
+                        ClawToolContext.setContext(userId, session.getId(), clawLevel, clawApprovalMode.getCode(), liveStream::publish, abortStream);
                     }
                     try {
                         for (int iteration = 0; iteration < 50; iteration++) {
@@ -605,6 +613,9 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             ToolExecutionResult toolResult = observableManager.executeToolCalls(iterationPrompt, aggregated);
                             collector.setLastRoundTextAndReasoning(roundText, roundReasoning);
                             workingMessages = new ArrayList<>(toolResult.conversationHistory());
+
+                            // 工具等待超时（Pyodide/人工审批）已置中止标记：立即截停，不再进入下一轮 LLM 调用
+                            if (cancelFlag.get()) throw new ChatStreamCancelledException("工具等待超时中止");
                         }
                     } finally {
                         PyodideCodeRunner.clearContext();
@@ -694,14 +705,19 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                                         "sessionName", session.getSessionName())));
                     }
 
-                    liveStream.finish("done",
-                            JSON.toJSONString(Map.of("sessionId", session.getId(),
-                                    "userMessageId", savedIds.get("userMessageId"),
-                                    "messageId", savedIds.get("messageId"),
-                                    "promptTokenCount", promptTokens[0],
-                                    "completionTokenCount", completionTokens[0],
-                                    "cachedTokenCount", cachedTokens[0],
-                                    "reasoningTokenCount", reasoningTokens[0])));
+                    Map<String, Object> donePayload = new java.util.LinkedHashMap<>();
+                    donePayload.put("sessionId", session.getId());
+                    donePayload.put("userMessageId", savedIds.get("userMessageId"));
+                    donePayload.put("messageId", savedIds.get("messageId"));
+                    donePayload.put("promptTokenCount", promptTokens[0]);
+                    donePayload.put("completionTokenCount", completionTokens[0]);
+                    donePayload.put("cachedTokenCount", cachedTokens[0]);
+                    donePayload.put("reasoningTokenCount", reasoningTokens[0]);
+                    // 工具等待超时（Pyodide/人工审批）导致的中止：附带原因供前端展示"已终止"标记
+                    if (abortReason.get() != null) {
+                        donePayload.put("abortReason", abortReason.get());
+                    }
+                    liveStream.finish("done", JSON.toJSONString(donePayload));
 
                     CompletableFuture<Map<String, String>> pendingFuture = streamStopResults.remove(streamUniqueKey);
                     if (pendingFuture != null) {
