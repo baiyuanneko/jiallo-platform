@@ -35,7 +35,7 @@ public class ClawFileController {
     )
     @GetMapping("clawFiles/list")
     public R<List<ClawFileItemDto>> listWorkspaceFiles(
-            @Parameter(description = "会话ID", required = true) @RequestParam String sessionId,
+            @Parameter(description = "会话ID（可选；工作区按用户隔离，仅传入时用于校验会话归属）") @RequestParam(required = false) String sessionId,
             @Parameter(description = "工作区相对路径，为空表示根目录") @RequestParam(required = false) String path) {
         return R.ok(clawFileService.listWorkspaceFiles(sessionId, path));
     }
@@ -46,7 +46,7 @@ public class ClawFileController {
     )
     @GetMapping("clawFiles/download")
     public ResponseEntity<Resource> downloadWorkspaceFile(
-            @Parameter(description = "会话ID", required = true) @RequestParam String sessionId,
+            @Parameter(description = "会话ID（可选；工作区按用户隔离，仅传入时用于校验会话归属）") @RequestParam(required = false) String sessionId,
             @Parameter(description = "工作区相对路径", required = true) @RequestParam String path) {
         return clawFileService.downloadWorkspaceFile(sessionId, path);
     }
@@ -58,7 +58,7 @@ public class ClawFileController {
     )
     @PostMapping("clawFiles/upload")
     public R<Void> uploadWorkspaceFile(
-            @Parameter(description = "会话ID", required = true) @RequestParam String sessionId,
+            @Parameter(description = "会话ID（可选；工作区按用户隔离，仅传入时用于校验会话归属）") @RequestParam(required = false) String sessionId,
             @Parameter(description = "目标目录的工作区相对路径，为空表示根目录") @RequestParam(required = false) String path,
             @Parameter(description = "上传文件（最大 20MB）", required = true) @RequestParam("file") MultipartFile file) {
         clawFileService.uploadWorkspaceFile(sessionId, path, file);

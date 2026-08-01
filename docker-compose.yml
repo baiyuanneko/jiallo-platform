@@ -39,6 +39,10 @@ services:
   backend:
     build: ./java-backend
     restart: unless-stopped
+    # Run as the host user so files created in the bind-mounted claw-workspace
+    # are owned by the host user instead of root (same convention as the dev
+    # stack). Defaults to 1000:1000; override with APP_UID/APP_GID if needed.
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
@@ -74,7 +78,8 @@ services:
       - "8233"
     volumes:
       # Claw-like 工作区持久化到宿主机（容器默认工作区根路径为 /app/claw-workspace）。
-      # 注意：容器以 root 运行，宿主机上这些文件会是 root 属主，清理需 sudo。
+      # 容器以上面的 user: 指定的宿主机用户运行，这里创建的文件归该用户所有；
+      # 若目录已由旧 root 容器创建，请先 chown 给该用户，否则工作区创建会失败。
       - ./java-backend/claw-workspace:/app/claw-workspace
 
   frontend:

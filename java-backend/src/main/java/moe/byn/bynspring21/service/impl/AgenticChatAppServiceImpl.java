@@ -4,7 +4,6 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import moe.byn.bynspring21.entity.AgenticChatMessage;
@@ -566,13 +565,9 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     MemoryTools.setContext(userId, vo.getAgentType());
                     // 设置 RAG 知识库工具上下文（scope + libraryIds）
                     ragKnowledgeBaseTool.setContext(vo.getRagLibraryIds(), userId);
-                    // 设置 Claw-like 工具上下文（userId + sessionId + 安全级别 + 审批模式 + SSE emitter + 超时中止回调）
+                    // 设置 Claw-like 工具上下文（userId + 安全级别 + 审批模式 + SSE emitter + 超时中止回调）
                     if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
-                        if (session.getId() == null) {
-                            // 新会话提前分配ID（ASSIGN_ID 会沿用已设置的ID），保证工作区目录与最终会话ID一致
-                            session.setId(IdWorker.getIdStr());
-                        }
-                        ClawToolContext.setContext(userId, session.getId(), clawLevel, clawApprovalMode.getCode(), liveStream::publish, abortStream);
+                        ClawToolContext.setContext(userId, clawLevel, clawApprovalMode.getCode(), liveStream::publish, abortStream);
                     }
                     try {
                         for (int iteration = 0; iteration < 50; iteration++) {

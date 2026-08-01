@@ -191,9 +191,9 @@ export function postClawToolApprovalApi(data: ClawToolApprovalVo) {
 
 /**
  * 列出工作区某目录下的文件（单层）
- * path 为工作区相对路径
+ * path 为工作区相对路径；工作区按用户隔离，sessionId 可选（传入时后端顺带校验会话归属）
  */
-export function listClawFilesApi(sessionId: string, path: string) {
+export function listClawFilesApi(sessionId: string | undefined, path: string) {
   return request.get<RClawFileList>('/agenticChatApp/clawFiles/list', {
     params: { sessionId, path },
   })
@@ -202,7 +202,7 @@ export function listClawFilesApi(sessionId: string, path: string) {
 /**
  * 下载工作区文件（原始字节）
  */
-export function downloadClawFileApi(sessionId: string, path: string) {
+export function downloadClawFileApi(sessionId: string | undefined, path: string) {
   return request.get<Blob>('/agenticChatApp/clawFiles/download', {
     params: { sessionId, path },
     responseType: 'blob',
@@ -212,9 +212,9 @@ export function downloadClawFileApi(sessionId: string, path: string) {
 /**
  * 上传文件到工作区某目录
  */
-export function uploadClawFileApi(sessionId: string, path: string, file: File) {
+export function uploadClawFileApi(sessionId: string | undefined, path: string, file: File) {
   const formData = new FormData()
-  formData.append('sessionId', sessionId)
+  if (sessionId) formData.append('sessionId', sessionId)
   formData.append('path', path)
   formData.append('file', file)
   return request.post<RVoid>('/agenticChatApp/clawFiles/upload', formData, {

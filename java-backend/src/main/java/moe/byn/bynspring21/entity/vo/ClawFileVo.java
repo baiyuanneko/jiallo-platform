@@ -14,8 +14,7 @@ public class ClawFileVo {
     @Schema(description = "Claw-like 工作区文件重命名参数")
     public static class RenameWorkspaceFileVo {
 
-        @Schema(description = "会话ID", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank(message = "sessionId不能为空")
+        @Schema(description = "会话ID（可选；工作区按用户隔离，仅传入时用于校验会话归属）")
         private String sessionId;
 
         @Schema(description = "目标文件或目录的工作区相对路径", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -33,8 +32,7 @@ public class ClawFileVo {
     @Schema(description = "Claw-like 工作区文件删除参数")
     public static class DeleteWorkspaceFileVo {
 
-        @Schema(description = "会话ID", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank(message = "sessionId不能为空")
+        @Schema(description = "会话ID（可选；工作区按用户隔离，仅传入时用于校验会话归属）")
         private String sessionId;
 
         @Schema(description = "目标文件或目录的工作区相对路径", requiredMode = Schema.RequiredMode.REQUIRED)

@@ -140,21 +140,25 @@ public class ClawFileServiceImpl implements ClawFileService {
     // ==================== 私有方法 ====================
 
     /**
-     * 校验会话归属（createUser 为当前用户且 agentType=3），返回该会话的工作区目录
+     * 解析当前用户的工作区目录（工作区按用户隔离，所有 Claw-like 会话共享）。
+     * 传入 sessionId 时顺带校验会话归属（createUser 为当前用户且 agentType=3）；
+     * 未传入（如尚未发送首条消息的新会话）直接按用户解析
      */
     private Path resolveOwnedWorkspace(String sessionId) {
         String userId = securityUtil.getUserId();
-        AgenticChatSession session = agenticChatSessionService.getById(sessionId);
-        if (session == null) {
-            throw new BynBaseException("会话不存在");
+        if (sessionId != null && !sessionId.isBlank()) {
+            AgenticChatSession session = agenticChatSessionService.getById(sessionId);
+            if (session == null) {
+                throw new BynBaseException("会话不存在");
+            }
+            if (!userId.equals(session.getCreateUser())) {
+                throw new BynBaseException("无权操作此会话");
+            }
+            if (!CLAW_LIKE_AGENT_TYPE.equals(session.getAgentType())) {
+                throw new BynBaseException("该会话不是 Claw-like 会话");
+            }
         }
-        if (!userId.equals(session.getCreateUser())) {
-            throw new BynBaseException("无权操作此会话");
-        }
-        if (!CLAW_LIKE_AGENT_TYPE.equals(session.getAgentType())) {
-            throw new BynBaseException("该会话不是 Claw-like 会话");
-        }
-        return clawWorkspaceUtil.resolveWorkspace(userId, sessionId);
+        return clawWorkspaceUtil.resolveWorkspace(userId);
     }
 
     /**

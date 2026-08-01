@@ -9,7 +9,6 @@ import {
   DownloadOutlined,
   EditOutlined,
   DeleteOutlined,
-  FolderOpenOutlined,
 } from '@ant-design/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { ui } from '@/utils/ui'
@@ -39,9 +38,8 @@ const entries = ref<ClawFileEntry[]>([])
 const loading = ref(false)
 const uploading = ref(false)
 
-/** 工作区 scope 依赖当前激活 tab 的 sessionId */
+/** 工作区 scope 依赖当前激活 tab 的 sessionId（可选：工作区按用户隔离，无会话时也可访问） */
 const sessionId = computed(() => chatStore.currentSessionId)
-const needSession = computed(() => props.scope === 'workspace' && !sessionId.value)
 
 const isRoot = computed(() => currentPath.value === ROOT)
 const displayPath = computed(() =>
@@ -69,13 +67,12 @@ function fullPath(entry: ClawFileEntry): string {
 let loadSeq = 0
 
 async function loadFiles() {
-  if (needSession.value) return
   const seq = ++loadSeq
   loading.value = true
   try {
     const res =
       props.scope === 'workspace'
-        ? await listClawFilesApi(sessionId.value!, currentPath.value)
+        ? await listClawFilesApi(sessionId.value || undefined, currentPath.value)
         : await listClawServerFilesApi(currentPath.value)
     if (seq !== loadSeq) return
     // 目录在上、文件在下，同类按名称排序
@@ -117,7 +114,7 @@ async function handleDownload(entry: ClawFileEntry) {
   try {
     const res =
       props.scope === 'workspace'
-        ? await downloadClawFileApi(sessionId.value!, fullPath(entry))
+        ? await downloadClawFileApi(sessionId.value || undefined, fullPath(entry))
         : await downloadClawServerFileApi(fullPath(entry))
     triggerDownload(res.data, entry.name)
   } catch {
@@ -208,7 +205,7 @@ async function handleFileUpload(e: Event) {
   uploading.value = true
   try {
     if (props.scope === 'workspace') {
-      await uploadClawFileApi(sessionId.value!, currentPath.value, file)
+      await uploadClawFileApi(sessionId.value || undefined, currentPath.value, file)
     } else {
       await uploadClawServerFileApi(currentPath.value, file)
     }
@@ -241,22 +238,17 @@ onMounted(loadFiles)
 <template>
   <div class="claw-file-panel">
     <div class="claw-file-panel__toolbar">
-      <button class="claw-file-panel__icon-btn" title="刷新" :disabled="needSession" @click="loadFiles">
+      <button class="claw-file-panel__icon-btn" title="刷新" @click="loadFiles">
         <ReloadOutlined :spin="loading" />
       </button>
-      <button class="claw-file-panel__icon-btn" title="上传到当前目录" :disabled="needSession || uploading" @click="triggerUpload">
+      <button class="claw-file-panel__icon-btn" title="上传到当前目录" :disabled="uploading" @click="triggerUpload">
         <UploadOutlined />
       </button>
       <span class="claw-file-panel__path" :title="displayPath">{{ displayPath }}</span>
       <input ref="fileInputRef" type="file" style="display: none" @change="handleFileUpload" />
     </div>
 
-    <div v-if="needSession" class="claw-file-panel__empty">
-      <FolderOpenOutlined class="claw-file-panel__empty-icon" />
-      <span>发送首条消息后可管理工作区文件</span>
-    </div>
-
-    <div v-else class="claw-file-panel__list">
+    <div class="claw-file-panel__list">
       <div v-if="loading && entries.length === 0" class="claw-file-panel__hint">加载中...</div>
       <template v-else>
         <div v-if="!isRoot" class="claw-file-panel__item" @click="goUp">
@@ -367,22 +359,6 @@ onMounted(loadFiles)
   white-space: nowrap;
   direction: rtl;
   text-align: left;
-}
-
-.claw-file-panel__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 40px 20px;
-  color: #8c8c8c;
-  font-size: 13px;
-  text-align: center;
-}
-
-.claw-file-panel__empty-icon {
-  font-size: 32px;
-  color: #d9d9d9;
 }
 
 .claw-file-panel__list {
