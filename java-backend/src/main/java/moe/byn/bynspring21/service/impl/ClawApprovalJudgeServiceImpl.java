@@ -1,8 +1,6 @@
 package moe.byn.bynspring21.service.impl;
 
 import lombok.extern.slf4j.Slf4j;
-import moe.byn.bynspring21.entity.base.ClawSecurityLevel;
-import moe.byn.bynspring21.entity.tool.ClawToolContext;
 import moe.byn.bynspring21.service.ClawApprovalJudgeService;
 import moe.byn.bynspring21.service.SysConfigService;
 import moe.byn.bynspring21.service.SysLlmModelService;
@@ -18,7 +16,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Claw-like 工具调用危险性评判：使用系统配置的审批模型（clawLikeApprovalModelId）判断，
+ * Claw-like 工具调用危险性评判：使用系统配置的审批模型（clawLikeApprovalModelId）判断
+ * 工具调用是否具有危险性或可能造成敏感信息泄露，
  * 未配置、调用异常或输出不可解析时一律按危险处理（降级人工确认）
  */
 @Slf4j
@@ -40,17 +39,10 @@ public class ClawApprovalJudgeServiceImpl implements ClawApprovalJudgeService {
         }
         try {
             ChatModel judgeModel = sysLlmModelService.createChatModelByModelId(modelId);
-            String levelDesc = "未知";
-            Integer level = ClawToolContext.getLevel();
-            if (level != null) {
-                ClawSecurityLevel securityLevel = ClawSecurityLevel.fromCode(level);
-                if (securityLevel != null) {
-                    levelDesc = securityLevel.getDesc();
-                }
-            }
             String promptText = "你是 AI 工具调用的安全审批员。请判断下面这次工具调用是否具有危险性"
-                    + "（例如删除或覆盖数据、执行有副作用的 shell 命令、修改系统配置、访问敏感文件等）。\n"
-                    + "当前安全级别：" + levelDesc + "\n"
+                    + "或可能造成敏感信息泄露"
+                    + "（例如删除或覆盖数据、执行有副作用的 shell 命令、修改系统配置、"
+                    + "读取或外泄敏感文件/密钥/凭证/个人隐私数据等）。\n"
                     + "工具名称：" + toolName + "\n"
                     + "工具参数：" + arguments + "\n"
                     + "只输出一个词：安全输出 SAFE，危险输出 DANGEROUS，不要输出任何其他内容。";
