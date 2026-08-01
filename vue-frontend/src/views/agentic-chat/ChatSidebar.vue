@@ -33,7 +33,7 @@ const chatStore = useChatStore()
 const userStore = useUserStore()
 
 const nullSessionInflightStreams = computed(() =>
-  chatStore.inflightStreams.filter((s) => s.sessionId == null),
+  chatStore.filteredInflightStreams.filter((s) => s.sessionId == null),
 )
 
 const isPwa = ref(false)

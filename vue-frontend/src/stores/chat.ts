@@ -198,6 +198,13 @@ let agentTypeBeforeClawLike: AgentType | null = null
     return modeFiltered.filter((s) => s.sessionName.toLowerCase().includes(kw))
   })
 
+  /** 进行中的流按模式过滤：claw-like 与普通 agentic 的断点续传条目互相隔离（同 filteredSessions） */
+  const filteredInflightStreams = computed(() =>
+    inflightStreams.value.filter(
+      (s) => (s.agentType === AgentType.CLAW_LIKE) === isClawLikeMode.value,
+    ),
+  )
+
   async function loadSessions(loadMore = false) {
     if (sessionsLoading.value) return
     if (!loadMore && !sessionsHasMore.value) return
@@ -1585,6 +1592,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
     activeStreamCount,
     filteredSessions,
     inflightStreams,
+    filteredInflightStreams,
     getActiveTab,
     loadSessions,
     refreshSessions,
