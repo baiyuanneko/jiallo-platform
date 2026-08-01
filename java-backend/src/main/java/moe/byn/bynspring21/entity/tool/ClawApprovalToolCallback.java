@@ -8,9 +8,9 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Claw-like 工具调用审批装饰器：按当前上下文审批模式决定是否放行工具执行。
@@ -98,9 +98,9 @@ public class ClawApprovalToolCallback implements ToolCallback {
      * 发起人工审批：发送 claw_tool_approval_request SSE 事件，阻塞等待前端回传结果
      */
     private boolean requestManualApproval(String toolName, String toolInput, String userId) {
-        SseEmitter emitter = ClawToolContext.getEmitter();
-        if (emitter == null) {
-            log.warn("Claw 人工审批上下文缺少 emitter，视为拒绝: toolName={}", toolName);
+        BiConsumer<String, String> publisher = ClawToolContext.getPublisher();
+        if (publisher == null) {
+            log.warn("Claw 人工审批上下文缺少 publisher，视为拒绝: toolName={}", toolName);
             return false;
         }
         String requestId = pendingManager.createPending(userId);
@@ -110,12 +110,9 @@ public class ClawApprovalToolCallback implements ToolCallback {
                     "name", toolName,
                     "arguments", toolInput
             ));
-            emitter.send(SseEmitter.event().name("claw_tool_approval_request").data(payload));
+            // 通过 LiveStream publisher 走帧日志 + fanout，断开/恢复的客户端重放后仍可审批
+            publisher.accept("claw_tool_approval_request", payload);
             return pendingManager.waitForApproval(requestId, APPROVAL_TIMEOUT_SECONDS);
-        } catch (Exception e) {
-            // emitter 失效时 send 可能抛 IllegalStateException 等非 IOException，失败一律视同拒绝
-            log.error("Claw 人工审批请求失败，视为拒绝: toolName={}", toolName, e);
-            return false;
         } finally {
             // waitForApproval 内部已移除，此处兜底确保异常路径不泄漏 pending 条目
             pendingManager.removePending(requestId);

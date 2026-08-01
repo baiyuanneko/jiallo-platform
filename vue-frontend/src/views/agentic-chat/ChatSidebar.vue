@@ -12,6 +12,7 @@ import {
   ShareAltOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useUserStore } from '@/stores/user'
@@ -30,6 +31,10 @@ function openRagLibrary() {
 }
 const chatStore = useChatStore()
 const userStore = useUserStore()
+
+const nullSessionInflightStreams = computed(() =>
+  chatStore.inflightStreams.filter((s) => s.sessionId == null),
+)
 
 const isPwa = ref(false)
 
@@ -191,11 +196,24 @@ function handleDeleteSession(sessionId: string, sessionName: string) {
       </div>
 
       <div class="chat-sidebar__list">
+        <div
+          v-for="stream in nullSessionInflightStreams"
+          :key="`inflight-${stream.streamUniqueKey}`"
+          class="chat-sidebar__inflight-item"
+          @click="chatStore.resumeStream(stream)"
+        >
+          <LoadingOutlined class="chat-sidebar__inflight-spinner" />
+          <div class="chat-sidebar__inflight-content">
+            <div class="chat-sidebar__inflight-name">{{ stream.userMessagePreview || '新对话' }}</div>
+            <div class="chat-sidebar__inflight-status">生成中… 点击恢复</div>
+          </div>
+        </div>
         <SessionListItem
           v-for="session in chatStore.filteredSessions"
           :key="session.id"
           :session="session"
           :is-active="chatStore.currentSessionId === session.id"
+          :is-generating="chatStore.isSessionGenerating(session.id)"
           @single-click="chatStore.handleSidebarSingleClick(session.id)"
           @double-click="chatStore.handleSidebarDoubleClick(session.id)"
           @rename="(id, name) => chatStore.renameSession(id, name)"
@@ -326,6 +344,58 @@ function handleDeleteSession(sessionId: string, sessionName: string) {
   flex: 1;
   overflow-y: auto;
   padding: 0 8px 8px;
+}
+
+.chat-sidebar__inflight-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-left: 3px solid #1677ff;
+  background: #e6f4ff;
+  margin-bottom: 4px;
+}
+
+.chat-sidebar__inflight-item:hover {
+  background: #d6eaff;
+}
+
+.chat-sidebar__inflight-spinner {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: #1677ff;
+  animation: chat-sidebar__spin 1s linear infinite;
+}
+
+@keyframes chat-sidebar__spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.chat-sidebar__inflight-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-sidebar__inflight-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.chat-sidebar__inflight-status {
+  font-size: 12px;
+  color: #1677ff;
+  line-height: 1.4;
+  margin-top: 2px;
 }
 
 .chat-sidebar__sentinel {

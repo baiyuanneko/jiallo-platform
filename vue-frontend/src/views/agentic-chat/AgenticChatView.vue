@@ -47,7 +47,7 @@ function checkMobileAndCollapse() {
 }
 
 onMounted(async () => {
-  await Promise.all([chatStore.loadSessions(), chatStore.loadModels(), chatStore.loadAgentTypes(), chatStore.loadRagModuleAuth(), chatStore.loadClawLikeAuth(), chatStore.loadClawSecurityLevel()])
+  await Promise.all([chatStore.loadSessions(), chatStore.loadModels(), chatStore.loadAgentTypes(), chatStore.loadRagModuleAuth(), chatStore.loadClawLikeAuth(), chatStore.loadClawSecurityLevel(), chatStore.loadInflightStreams()])
   const sessionId = route.params.sessionId as string | undefined
   if (sessionId) {
     chatStore.handleSidebarSingleClick(sessionId)

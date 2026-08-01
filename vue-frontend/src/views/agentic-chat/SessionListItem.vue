@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, nextTick } from 'vue'
-import { MessageOutlined, EditOutlined, DeleteOutlined, EllipsisOutlined } from '@ant-design/icons-vue'
+import { MessageOutlined, EditOutlined, DeleteOutlined, EllipsisOutlined, LoadingOutlined } from '@ant-design/icons-vue'
 import type { AgenticChatSession } from '@/types/chat'
 
 const props = defineProps<{
   session: AgenticChatSession
   isActive: boolean
+  isGenerating?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -97,7 +98,13 @@ function handleDelete() {
         />
       </div>
       <div v-else class="session-list-item__name">{{ session.sessionName || '新对话' }}</div>
-      <div class="session-list-item__time">{{ relativeTime }}</div>
+      <div class="session-list-item__time">
+        <template v-if="isGenerating">
+          <LoadingOutlined class="session-list-item__generating-icon" />
+          <span>生成中…</span>
+        </template>
+        <template v-else>{{ relativeTime }}</template>
+      </div>
     </div>
     <a-dropdown v-if="!isRenaming" v-model:open="moreVisible" trigger="click" placement="bottomRight">
       <button class="session-list-item__more-btn" @click.stop>
@@ -182,6 +189,21 @@ function handleDelete() {
   color: #8c8c8c;
   line-height: 1.4;
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-list-item__generating-icon {
+  font-size: 12px;
+  color: #1677ff;
+  animation: session-list-item__spin 1s linear infinite;
+}
+
+@keyframes session-list-item__spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .session-list-item__more-btn {

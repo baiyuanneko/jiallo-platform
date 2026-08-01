@@ -39,6 +39,10 @@ public interface AgenticChatAppService {
 
     Map<String, String> stopChatStream(String streamUniqueKey);
 
+    List<AgenticChatAppVo.InflightStreamVo> listInflightStreams();
+
+    SseEmitter resumeChatStream(AgenticChatAppVo.ResumeStreamVo vo);
+
     String shareSession(AgenticChatAppVo.ShareSessionVo vo);
 
     void unshareSession(String sessionId);

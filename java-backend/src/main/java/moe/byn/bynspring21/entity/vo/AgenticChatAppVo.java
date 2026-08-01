@@ -166,4 +166,44 @@ public class AgenticChatAppVo {
         @NotBlank(message = "streamUniqueKey不能为空")
         private String streamUniqueKey;
     }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "进行中的流式对话信息")
+    public static class InflightStreamVo {
+
+        @Schema(description = "流唯一标识")
+        private String streamUniqueKey;
+
+        @Schema(description = "会话ID，新会话在完成前为 null")
+        private String sessionId;
+
+        @Schema(description = "Agent类型：0为chatClient、1为reactAgent、2为digitalByn、3为clawLike")
+        private Integer agentType;
+
+        @Schema(description = "模型ID")
+        private String modelId;
+
+        @Schema(description = "模型类型：0为sysModel、1为userModel")
+        private Integer modelType;
+
+        @Schema(description = "流开始时间（epoch 毫秒）")
+        private long startedAt;
+
+        @Schema(description = "用户消息预览（前约100字符）")
+        private String userMessagePreview;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "恢复流式对话参数")
+    public static class ResumeStreamVo {
+
+        @Schema(description = "流唯一标识，由 chatStream 接口通过 SSE streamUniqueKey 事件返回", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotBlank(message = "streamUniqueKey不能为空")
+        private String streamUniqueKey;
+    }
 }

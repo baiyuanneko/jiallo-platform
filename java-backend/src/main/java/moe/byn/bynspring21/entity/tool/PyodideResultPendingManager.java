@@ -68,12 +68,13 @@ public class PyodideResultPendingManager {
     }
 
     /**
-     * 前端提交结果，完成 future
+     * 前端提交结果，完成 future；未知/已完成的 requestId 视为成功 no-op（恢复客户端重放历史请求事件后可能重复回传）
      */
     public void completeResult(String requestId, String userId, PyodideResult result) {
         PendingEntry entry = pendingMap.get(requestId);
         if (entry == null) {
-            throw new BynBaseException("无效的 requestId: " + requestId);
+            log.warn("Pyodide result 提交忽略未知/已完成 requestId: requestId={}, userId={}", requestId, userId);
+            return;
         }
         if (!entry.getUserId().equals(userId)) {
             throw new BynBaseException("requestId 与当前用户不匹配");

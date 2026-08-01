@@ -266,6 +266,20 @@ export interface ClawFileDeleteVo {
   path: string
 }
 
+// ==================== 进行中聊天流（断线重连/恢复） ====================
+
+export interface InflightStream {
+  streamUniqueKey: string
+  /** 为 null 表示尚未入库的新对话（后端序列化为 JSON 字符串） */
+  sessionId: string | null
+  agentType: number
+  modelId: string
+  modelType: number
+  /** epoch ms */
+  startedAt: number
+  userMessagePreview: string
+}
+
 // ==================== SSE 事件数据类型 ====================
 
 export interface SseDoneEvent {
@@ -324,6 +338,7 @@ export type RModelsList = ApiResponse<SysLlmModel[]>
 export type RAvailableAgentTypes = ApiResponse<number[]>
 export type RClawSecurityLevel = ApiResponse<number>
 export type RClawFileList = ApiResponse<ClawFileEntry[]>
+export type RInflightStreams = ApiResponse<InflightStream[]>
 export type RShareSession = ApiResponse<string>
 export type RSharedSessionDetail = ApiResponse<SharedSessionDetail>
 export type RSharedSessionsPage = ApiResponse<PageResult<SharedSessionItem>>

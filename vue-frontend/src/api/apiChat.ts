@@ -24,6 +24,7 @@ import type {
   RClawFileList,
   ClawFileRenameVo,
   ClawFileDeleteVo,
+  RInflightStreams,
 } from '@/types/chat'
 import type { RVoid } from '@/types/user'
 
@@ -168,6 +169,13 @@ export function getSharedSessionsPageApi(data: SessionsPageVo) {
 /** 取消指定聊天流，本轮对话不会被保存到数据库 */
 export function stopChatStreamApi(streamUniqueKey: string) {
   return request.post('/agenticChatApp/stopChatStream', { streamUniqueKey })
+}
+
+/**
+ * 获取当前用户进行中的聊天流列表（断线重连/恢复用）
+ */
+export function getInflightStreamsApi() {
+  return request.get<RInflightStreams>('/agenticChatApp/streams/inflight')
 }
 
 // ==================== Claw-like 工具审批 ====================

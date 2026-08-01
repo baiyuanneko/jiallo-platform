@@ -1,38 +1,34 @@
 package moe.byn.bynspring21.entity.tool;
 
 import com.alibaba.fastjson2.JSON;
-import lombok.extern.slf4j.Slf4j;
 import moe.byn.bynspring21.entity.base.AgenticToolEnum;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.definition.ToolDefinition;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
-@Slf4j
 public class ObservableToolCallingManager implements ToolCallingManager {
 
     private final ToolCallingManager delegate;
-    private final SseEmitter emitter;
+    private final BiConsumer<String, String> publisher;
     private final ToolCallCollector collector;
 
     public ObservableToolCallingManager(ToolCallingManager delegate,
-                                        SseEmitter emitter,
+                                        BiConsumer<String, String> publisher,
                                         ToolCallCollector collector) {
         this.delegate = delegate;
-        this.emitter = emitter;
+        this.publisher = publisher;
         this.collector = collector;
     }
 
@@ -80,11 +76,7 @@ public class ObservableToolCallingManager implements ToolCallingManager {
     }
 
     private void sendSseEvent(String eventName, String data) {
-        try {
-            emitter.send(SseEmitter.event().name(eventName).data(data));
-        } catch (IOException e) {
-            log.error("SSE 发送 {} 事件失败", eventName, e);
-        }
+        publisher.accept(eventName, data);
     }
 
     public record ToolCallEvent(String name, String id, String arguments) {}

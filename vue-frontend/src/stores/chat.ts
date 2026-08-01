@@ -4,8 +4,8 @@ import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
 import { Modal } from 'ant-design-vue'
 import { h } from 'vue'
 import request from '@/utils/request'
-import { getSessionsPageApi, getSessionDetailApi, getAvailableModelsListApi, editMessageApi, deleteMessageApi, renameSessionApi, deleteSessionApi, getAvailableAgentTypesApi, getClawSecurityLevelApi, submitPyodideToolResultApi, postClawToolApprovalApi, shareSessionApi, unshareSessionApi, reshareSessionApi, stopChatStreamApi } from '@/api/apiChat'
-import { createSseConnection, type SseCallbacks } from '@/utils/sse'
+import { getSessionsPageApi, getSessionDetailApi, getAvailableModelsListApi, editMessageApi, deleteMessageApi, renameSessionApi, deleteSessionApi, getAvailableAgentTypesApi, getClawSecurityLevelApi, submitPyodideToolResultApi, postClawToolApprovalApi, shareSessionApi, unshareSessionApi, reshareSessionApi, stopChatStreamApi, getInflightStreamsApi } from '@/api/apiChat'
+import { createSseConnection, type SseCallbacks, type SseConnectionOptions } from '@/utils/sse'
 import { ui } from '@/utils/ui'
 import { useUserStore } from '@/stores/user'
 import { usePreferences } from '@/composables/usePreferences'
@@ -27,6 +27,7 @@ import type {
   ToolExecutionRequest,
   ClawToolApprovalRequest,
   ModelType,
+  InflightStream,
 } from '@/types/chat'
 
 export interface StreamingToolCall {
@@ -121,6 +122,8 @@ export const useChatStore = defineStore('chat', () => {
   const sessionsPage = ref(1)
   const sessionsHasMore = ref(true)
   const sessionsLoading = ref(false)
+
+  const inflightStreams = ref<InflightStream[]>([])
 
   // Tab system
   const tabs = ref<ChatTab[]>([])
@@ -233,6 +236,29 @@ let agentTypeBeforeClawLike: AgentType | null = null
     sessionsPage.value = 1
     sessionsHasMore.value = true
     await loadSessions(false)
+    loadInflightStreams()
+  }
+
+  async function loadInflightStreams() {
+    try {
+      const res = await getInflightStreamsApi()
+      if (res.data.code === 0) {
+        inflightStreams.value = res.data.data || []
+      }
+    } catch {
+      // 静默失败：inflight 仅用于 UI 增强，不影响核心功能
+    }
+  }
+
+  function removeInflightStream(streamUniqueKey: string) {
+    const idx = inflightStreams.value.findIndex((s) => s.streamUniqueKey === streamUniqueKey)
+    if (idx >= 0) inflightStreams.value.splice(idx, 1)
+  }
+
+  function isSessionGenerating(sessionId: string): boolean {
+    return inflightStreams.value.some(
+      (s) => s.sessionId === sessionId,
+    )
   }
 
   async function loadModels() {
@@ -472,6 +498,13 @@ let agentTypeBeforeClawLike: AgentType | null = null
       replaceActiveTab(sessionId, '', true)
     }
     await loadSessionIntoActiveTab(sessionId)
+
+    const inflight = inflightStreams.value.find(
+      (s) => s.sessionId === sessionId,
+    )
+    if (inflight && !getActiveTab()?.isStreaming) {
+      resumeStream(inflight)
+    }
   }
 
   async function handleSidebarDoubleClick(sessionId: string) {
@@ -501,6 +534,13 @@ let agentTypeBeforeClawLike: AgentType | null = null
       replaceActiveTab(sessionId, '', false)
     }
     await loadSessionIntoActiveTab(sessionId)
+
+    const inflight = inflightStreams.value.find(
+      (s) => s.sessionId === sessionId,
+    )
+    if (inflight && !getActiveTab()?.isStreaming) {
+      resumeStream(inflight)
+    }
   }
 
   function startNewSession() {
@@ -566,80 +606,11 @@ let agentTypeBeforeClawLike: AgentType | null = null
     }
   }
 
-  async function sendMessage(textContent: string, mediaBase64List?: string[]) {
-    const tab = getActiveTab()
-    if (!tab || tab.isStreaming) return
-    if (!textContent.trim() && !mediaBase64List?.length) return
-
-    // Pin the tab when sending a message
-    if (tab.isPreview) tab.isPreview = false
-
-    const userMessage: AgenticChatMessage = {
-      id: `temp-${Date.now()}`,
-      sessionId: tab.sessionId || '',
-      messageIndex: tab.messages.length,
-      messageType: MessageType.USER,
-      textContent,
-      mediaContent: mediaBase64List?.length ? JSON.stringify(mediaBase64List) : null,
-      mediaType: null,
-      promptTokenCount: null,
-      completionTokenCount: null,
-      reasoningTokenCount: null,
-      cachedTokenCount: null,
-      toolContent: null,
-      reasoningContent: null,
-      createUser: '',
-      updateUser: '',
-      updateTime: new Date().toISOString(),
-      createTime: new Date().toISOString(),
-      isDel: false,
-    }
-    tab.messages.push(userMessage)
-    const userMsgId = userMessage.id
-
-    tab.streamingMessage = {
-      rounds: [],
-      textContent: '',
-      reasoningContent: '',
-    }
-    tab.isStreaming = true
-
-    const vo: ChatStreamVo = {
-      sessionId: tab.sessionId,
-      textContent,
-      // claw-like 模式强制 agentType，工具列表由后端写死，enabledAgenticTools 传空数组
-      agentType: isClawLikeMode.value ? AgentType.CLAW_LIKE : currentAgentType.value,
-      modelType: 0 as ModelType,
-      modelId: tab.modelId || currentModelId.value,
-      enabledAgenticTools: isClawLikeMode.value ? [] : tab.enabledTools,
-      enabledAgenticSkills: tab.enabledSkills,
-      ragLibraryIds: ragLibraryIds.value,
-    }
-
-    // claw-like 模式带上用户选择的安全级别与审批模式（后端钳制生效级别）
-    if (isClawLikeMode.value) {
-      vo.clawSecurityLevel = clawSelectedLevel.value
-      vo.clawApprovalMode = clawApprovalMode.value
-    }
-
-    if (reasoningEffort.value) {
-      vo.reasoningEffort = reasoningEffort.value
-    }
-
-    if (mediaBase64List?.length) {
-      vo.mediaContentBase64List = mediaBase64List
-    }
-
-    // Save tool & skill selection for next new tab
-    if (rememberToolSelection.value) {
-      savedEnabledTools.value = [...tab.enabledTools]
-      savedEnabledSkills.value = [...tab.enabledSkills]
-    }
-
-    // Save agent type for next session（claw-like 模式不污染普通模式的偏好）
-    if (rememberAgentType.value && !isClawLikeMode.value) {
-      savedAgentType.value = currentAgentType.value
-    }
+  function buildStreamCallbacks(
+    opts: { tab: ChatTab; userMsgId?: string; agentType: number; reloadOnDone?: boolean },
+    onError: (msg: string) => void,
+  ): SseCallbacks {
+    const { tab, userMsgId, agentType, reloadOnDone } = opts
 
     const currentRound = (): StreamingToolRound => {
       const rounds = tab.streamingMessage?.rounds
@@ -754,6 +725,8 @@ let agentTypeBeforeClawLike: AgentType | null = null
       },
 
       onDone(sessionId: string, messageId: string, userMessageId: string, promptTokenCount?: number | null, completionTokenCount?: number | null, reasoningTokenCount?: number | null, cachedTokenCount?: number | null) {
+        const finishedKey = tab.streamUniqueKey
+
         if (tab.streamingMessage) {
           const sm = tab.streamingMessage
           const sid = sessionId || tab.sessionId || ''
@@ -898,7 +871,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
         }
 
         // 标记 tab 所属模式，用于跨模式会话隔离
-        tab.agentType = vo.agentType
+        tab.agentType = agentType
 
         tab.streamingMessage = null
         tab.isStreaming = false
@@ -908,10 +881,188 @@ let agentTypeBeforeClawLike: AgentType | null = null
         // 流已结束，销毁挂起的人工审批 Modal
         destroyApprovalModals()
 
+        if (finishedKey) removeInflightStream(finishedKey)
         refreshSessions()
+
+        if (reloadOnDone) {
+          const sid = sessionId || tab.sessionId
+          // 仅当该 tab 仍是当前活跃 tab 时才重载，避免用户中途切走后刷错会话
+          if (sid && tab.sessionId === sid && getActiveTab()?.id === tab.id) {
+            loadSessionIntoActiveTab(sid).catch(() => {
+              console.warn('[chat] reloadOnDone: failed to reload session', sid)
+            })
+          }
+        }
       },
 
-      onError(msg: string) {
+      onError,
+
+      onToolExecutionRequest(data: ToolExecutionRequest) {
+        const { requestId, code } = data
+
+        if (tab.streamingMessage) {
+          const round = currentRound()
+          round.toolCalls.push({
+            name: 'pyodide_code_runner',
+            id: requestId,
+            arguments: JSON.stringify({ code }),
+          })
+        }
+
+        nextTick().then(() => {
+          const delay = pyodide.isInitialized.value ? 100 : 500
+          return new Promise<void>((resolve) => setTimeout(resolve, delay))
+        }).then(() => {
+          return pyodide.executeCode(code)
+        }).then((result) => {
+          if (tab.streamingMessage) {
+            const round = currentRound()
+            round.toolResults.push({
+              name: 'pyodide_code_runner',
+              id: requestId,
+              result,
+            })
+          }
+          return submitPyodideToolResultApi({ requestId, ...result })
+        }).catch((err: unknown) => {
+          const result = {
+            stdout: null as string | null,
+            stderr: null as string | null,
+            error: err instanceof Error ? err.message : '执行失败',
+            exitCode: 1 as number | null,
+          }
+          if (tab.streamingMessage) {
+            const round = currentRound()
+            round.toolResults.push({
+              name: 'pyodide_code_runner',
+              id: requestId,
+              result,
+            })
+          }
+          return submitPyodideToolResultApi({ requestId, ...result })
+        })
+      },
+
+      onClawToolApprovalRequest(data: ClawToolApprovalRequest) {
+        const { requestId, name, arguments: args } = data
+        const argsSummary = args.length > 500 ? args.slice(0, 500) + '…' : args
+
+        const submitApproval = (approved: boolean) => {
+          postClawToolApprovalApi({ requestId, approved }).catch(() => {
+            ui.error('审批结果提交失败，该操作将被视为拒绝')
+          })
+        }
+
+        const modal = Modal.confirm({
+          title: '工具调用审批',
+          content: () =>
+            h('div', { style: 'line-height: 1.6; font-size: 13px; color: #595959;' }, [
+              h('p', { style: 'margin: 0 0 8px;' }, [
+                'AI 请求执行工具：',
+                h('span', { style: 'color: #262626; font-weight: 600;' }, name),
+              ]),
+              h('pre', {
+                style:
+                  'margin: 0; padding: 8px 10px; background: #f5f5f5; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 12px;',
+              }, argsSummary || '（无参数）'),
+            ]),
+          okText: '允许执行',
+          cancelText: '拒绝',
+          centered: true,
+          onOk: () => {
+            removeApprovalModal(modal)
+            submitApproval(true)
+          },
+          onCancel: () => {
+            removeApprovalModal(modal)
+            submitApproval(false)
+          },
+        })
+        approvalModals.push(modal)
+      },
+    }
+
+    return callbacks
+  }
+
+  async function sendMessage(textContent: string, mediaBase64List?: string[]) {
+    const tab = getActiveTab()
+    if (!tab || tab.isStreaming) return
+    if (!textContent.trim() && !mediaBase64List?.length) return
+
+    // Pin the tab when sending a message
+    if (tab.isPreview) tab.isPreview = false
+
+    const userMessage: AgenticChatMessage = {
+      id: `temp-${Date.now()}`,
+      sessionId: tab.sessionId || '',
+      messageIndex: tab.messages.length,
+      messageType: MessageType.USER,
+      textContent,
+      mediaContent: mediaBase64List?.length ? JSON.stringify(mediaBase64List) : null,
+      mediaType: null,
+      promptTokenCount: null,
+      completionTokenCount: null,
+      reasoningTokenCount: null,
+      cachedTokenCount: null,
+      toolContent: null,
+      reasoningContent: null,
+      createUser: '',
+      updateUser: '',
+      updateTime: new Date().toISOString(),
+      createTime: new Date().toISOString(),
+      isDel: false,
+    }
+    tab.messages.push(userMessage)
+    const userMsgId = userMessage.id
+
+    tab.streamingMessage = {
+      rounds: [],
+      textContent: '',
+      reasoningContent: '',
+    }
+    tab.isStreaming = true
+
+    const vo: ChatStreamVo = {
+      sessionId: tab.sessionId,
+      textContent,
+      // claw-like 模式强制 agentType，工具列表由后端写死，enabledAgenticTools 传空数组
+      agentType: isClawLikeMode.value ? AgentType.CLAW_LIKE : currentAgentType.value,
+      modelType: 0 as ModelType,
+      modelId: tab.modelId || currentModelId.value,
+      enabledAgenticTools: isClawLikeMode.value ? [] : tab.enabledTools,
+      enabledAgenticSkills: tab.enabledSkills,
+      ragLibraryIds: ragLibraryIds.value,
+    }
+
+    // claw-like 模式带上用户选择的安全级别与审批模式（后端钳制生效级别）
+    if (isClawLikeMode.value) {
+      vo.clawSecurityLevel = clawSelectedLevel.value
+      vo.clawApprovalMode = clawApprovalMode.value
+    }
+
+    if (reasoningEffort.value) {
+      vo.reasoningEffort = reasoningEffort.value
+    }
+
+    if (mediaBase64List?.length) {
+      vo.mediaContentBase64List = mediaBase64List
+    }
+
+    // Save tool & skill selection for next new tab
+    if (rememberToolSelection.value) {
+      savedEnabledTools.value = [...tab.enabledTools]
+      savedEnabledSkills.value = [...tab.enabledSkills]
+    }
+
+    // Save agent type for next session（claw-like 模式不污染普通模式的偏好）
+    if (rememberAgentType.value && !isClawLikeMode.value) {
+      savedAgentType.value = currentAgentType.value
+    }
+
+    const callbacks = buildStreamCallbacks(
+      { tab, userMsgId, agentType: vo.agentType },
+      (msg: string) => {
         // 防重复：isStreaming 已被置 false 说明已处理过
         if (!tab.isStreaming) return
 
@@ -1017,92 +1168,7 @@ let agentTypeBeforeClawLike: AgentType | null = null
           centered: true,
         })
       },
-
-      onToolExecutionRequest(data: ToolExecutionRequest) {
-        const { requestId, code } = data
-
-        if (tab.streamingMessage) {
-          const round = currentRound()
-          round.toolCalls.push({
-            name: 'pyodide_code_runner',
-            id: requestId,
-            arguments: JSON.stringify({ code }),
-          })
-        }
-
-        nextTick().then(() => {
-          const delay = pyodide.isInitialized.value ? 100 : 500
-          return new Promise<void>((resolve) => setTimeout(resolve, delay))
-        }).then(() => {
-          return pyodide.executeCode(code)
-        }).then((result) => {
-          if (tab.streamingMessage) {
-            const round = currentRound()
-            round.toolResults.push({
-              name: 'pyodide_code_runner',
-              id: requestId,
-              result,
-            })
-          }
-          return submitPyodideToolResultApi({ requestId, ...result })
-        }).catch((err: unknown) => {
-          const result = {
-            stdout: null as string | null,
-            stderr: null as string | null,
-            error: err instanceof Error ? err.message : '执行失败',
-            exitCode: 1 as number | null,
-          }
-          if (tab.streamingMessage) {
-            const round = currentRound()
-            round.toolResults.push({
-              name: 'pyodide_code_runner',
-              id: requestId,
-              result,
-            })
-          }
-          return submitPyodideToolResultApi({ requestId, ...result })
-        })
-      },
-
-      /** Claw-like 工具调用人工审批：弹确认框，确认/拒绝后回传审批结果 */
-      onClawToolApprovalRequest(data: ClawToolApprovalRequest) {
-        const { requestId, name, arguments: args } = data
-        const argsSummary = args.length > 500 ? args.slice(0, 500) + '…' : args
-
-        const submitApproval = (approved: boolean) => {
-          postClawToolApprovalApi({ requestId, approved }).catch(() => {
-            ui.error('审批结果提交失败，该操作将被视为拒绝')
-          })
-        }
-
-        const modal = Modal.confirm({
-          title: '工具调用审批',
-          content: () =>
-            h('div', { style: 'line-height: 1.6; font-size: 13px; color: #595959;' }, [
-              h('p', { style: 'margin: 0 0 8px;' }, [
-                'AI 请求执行工具：',
-                h('span', { style: 'color: #262626; font-weight: 600;' }, name),
-              ]),
-              h('pre', {
-                style:
-                  'margin: 0; padding: 8px 10px; background: #f5f5f5; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 12px;',
-              }, argsSummary || '（无参数）'),
-            ]),
-          okText: '允许执行',
-          cancelText: '拒绝',
-          centered: true,
-          onOk: () => {
-            removeApprovalModal(modal)
-            submitApproval(true)
-          },
-          onCancel: () => {
-            removeApprovalModal(modal)
-            submitApproval(false)
-          },
-        })
-        approvalModals.push(modal)
-      },
-    }
+    )
 
     tab.abortController = createSseConnection(vo, callbacks)
   }
@@ -1134,6 +1200,127 @@ let agentTypeBeforeClawLike: AgentType | null = null
     }
     // 不中断 SSE 连接，等待 done 事件自然到达
     // onDone 回调会处理内容持久化和状态清理
+  }
+
+  async function resumeStream(meta: InflightStream) {
+    let tab: ChatTab | undefined
+    let userMsgId: string | undefined
+
+    // 在 tab 中植入触发本次恢复的用户消息；若末尾已存在等价用户消息则复用，避免重复。
+    const seedResumeUserMessage = (target: ChatTab): string => {
+      const preview = meta.userMessagePreview || '（恢复的进行中对话）'
+      const last = target.messages[target.messages.length - 1]
+      if (last && last.messageType === MessageType.USER && last.textContent != null) {
+        if (
+          last.textContent === preview ||
+          preview.startsWith(last.textContent) ||
+          last.textContent.startsWith(preview)
+        ) {
+          return last.id
+        }
+      }
+      const userMessage: AgenticChatMessage = {
+        id: `temp-resume-${Date.now()}`,
+        sessionId: target.sessionId || '',
+        messageIndex: target.messages.length,
+        messageType: MessageType.USER,
+        textContent: preview,
+        mediaContent: null,
+        mediaType: null,
+        promptTokenCount: null,
+        completionTokenCount: null,
+        reasoningTokenCount: null,
+        cachedTokenCount: null,
+        toolContent: null,
+        reasoningContent: null,
+        createUser: '',
+        updateUser: '',
+        updateTime: new Date().toISOString(),
+        createTime: new Date().toISOString(),
+        isDel: false,
+      }
+      target.messages.push(userMessage)
+      return userMessage.id
+    }
+
+    if (meta.sessionId != null) {
+      const sid = meta.sessionId
+      tab = tabs.value.find((t) => t.sessionId === sid)
+      if (tab) {
+        activeTabId.value = tab.id
+        if (tab.modelId) currentModelId.value = tab.modelId
+      } else {
+        if (effectiveMultiTab.value) {
+          const active = getActiveTab()
+          if (!active || !active.isPreview) {
+            tab = pushNewTab(sid, '', true)
+          } else {
+            tab = replaceActiveTab(sid, '', true)
+          }
+        } else {
+          tab = replaceActiveTab(sid, '', true)
+        }
+        await loadSessionIntoActiveTab(sid)
+        tab = getActiveTab()
+      }
+      if (tab) userMsgId = seedResumeUserMessage(tab)
+    } else {
+      startNewSession()
+      tab = getActiveTab()
+      if (tab) {
+        tab.modelId = meta.modelId
+        userMsgId = seedResumeUserMessage(tab)
+      }
+    }
+
+    if (!tab || tab.isStreaming) return
+
+    tab.streamingMessage = { rounds: [], textContent: '', reasoningContent: '' }
+    tab.isStreaming = true
+
+    const vo: ChatStreamVo = {
+      sessionId: meta.sessionId,
+      textContent: meta.userMessagePreview,
+      agentType: meta.agentType as AgentType,
+      modelType: meta.modelType as ModelType,
+      modelId: meta.modelId,
+      enabledAgenticTools: [],
+    }
+
+    const onError = (msg: string) => {
+      if (!tab!.isStreaming) return
+      destroyApprovalModals()
+
+      if (msg === '__BACKGROUND_INTERRUPT__') {
+        // 连接中断但服务端流可能仍在运行，保留 inflight 条目以便再次恢复
+        tab!.streamingMessage = null
+        tab!.isStreaming = false
+        tab!.abortController = null
+        tab!.streamUniqueKey = null
+        tab!.stopRequested = false
+        return
+      }
+
+      // 流已不存在或出错：静默清理，回退到正常行为
+      tab!.streamingMessage = null
+      tab!.isStreaming = false
+      tab!.abortController = null
+      tab!.streamUniqueKey = null
+      tab!.stopRequested = false
+      removeInflightStream(meta.streamUniqueKey)
+    }
+
+    const callbacks = buildStreamCallbacks(
+      { tab, userMsgId, agentType: meta.agentType, reloadOnDone: true },
+      onError,
+    )
+
+    const sseOptions: SseConnectionOptions = {
+      endpoint: '/agenticChatApp/chatStream/resume',
+      body: { streamUniqueKey: meta.streamUniqueKey },
+    }
+
+    tab.abortController = createSseConnection(vo, callbacks, sseOptions)
   }
 
   async function editAssistantMessage(messageId: string, newText: string) {
@@ -1380,9 +1567,13 @@ let agentTypeBeforeClawLike: AgentType | null = null
     reasoningEffort,
     activeStreamCount,
     filteredSessions,
+    inflightStreams,
     getActiveTab,
     loadSessions,
     refreshSessions,
+    loadInflightStreams,
+    isSessionGenerating,
+    resumeStream,
     loadModels,
     loadAgentTypes,
     loadRagModuleAuth,

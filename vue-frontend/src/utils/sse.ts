@@ -171,6 +171,13 @@ if (typeof document !== 'undefined') {
 
 // ==================== SSE 连接 ====================
 
+export interface SseConnectionOptions {
+  /** 覆盖默认端点路径（默认 /agenticChatApp/chatStream），用于 resume 等场景 */
+  endpoint?: string
+  /** 覆盖默认请求体（默认序列化 vo），用于 resume 传 { streamUniqueKey } */
+  body?: unknown
+}
+
 /**
  * 创建 SSE 流式连接
  *
@@ -178,15 +185,22 @@ if (typeof document !== 'undefined') {
  * - 发起连接前检查 token 有效期，即将过期则主动刷新
  * - 遇到 401 响应时自动刷新 token 并重试一次
  *
- * @param vo 请求参数
+ * @param vo 请求参数（当 options.body 未提供时使用）
  * @param callbacks 各事件的回调
+ * @param options 可选：覆盖端点路径与请求体（用于 resume 连接）
  * @returns AbortController — 调用 ctrl.abort() 可中断连接
  */
-export function createSseConnection(vo: ChatStreamVo, callbacks: SseCallbacks): AbortController {
+export function createSseConnection(
+  vo: ChatStreamVo,
+  callbacks: SseCallbacks,
+  options?: SseConnectionOptions,
+): AbortController {
   const ctrl = new AbortController()
 
   const baseUrl = getAppConfig().apiBaseUrl
-  const url = `${baseUrl}/agenticChatApp/chatStream`
+  const endpoint = options?.endpoint ?? '/agenticChatApp/chatStream'
+  const url = `${baseUrl}${endpoint}`
+  const requestBody = options?.body ?? vo
 
   const dispatch = (ev: SseEvent) => {
     const eventType = ev.event
@@ -289,7 +303,7 @@ export function createSseConnection(vo: ChatStreamVo, callbacks: SseCallbacks): 
           Authorization: `Bearer ${token}`,
           Accept: 'text/event-stream',
         },
-        body: JSON.stringify(vo),
+        body: JSON.stringify(requestBody),
         signal: ctrl.signal,
       })
 
@@ -305,7 +319,7 @@ export function createSseConnection(vo: ChatStreamVo, callbacks: SseCallbacks): 
               Authorization: `Bearer ${newToken}`,
               Accept: 'text/event-stream',
             },
-            body: JSON.stringify(vo),
+            body: JSON.stringify(requestBody),
             signal: ctrl.signal,
           })
 

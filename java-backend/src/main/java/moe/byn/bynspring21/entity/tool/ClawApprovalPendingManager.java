@@ -71,15 +71,16 @@ public class ClawApprovalPendingManager {
     }
 
     /**
-     * 前端提交审批结果，完成 future；userId 不匹配时直接抛异常，不影响原审批
+     * 前端提交审批结果，完成 future；未知/已完成的 requestId 视为成功 no-op（恢复客户端重放历史请求事件后可能重复回传）。
+     * userId 不匹配时仍抛异常，不动 future，避免合法用户的审批被旁人判拒
      */
     public void completeApproval(String requestId, String userId, boolean approved) {
         PendingEntry entry = pendingMap.get(requestId);
         if (entry == null) {
-            throw new BynBaseException("无效的 requestId: " + requestId);
+            log.warn("Claw approval 提交忽略未知/已完成 requestId: requestId={}, userId={}", requestId, userId);
+            return;
         }
         if (!entry.getUserId().equals(userId)) {
-            // 不匹配直接抛异常，不动 future，避免合法用户的审批被旁人判拒
             throw new BynBaseException("requestId 与当前用户不匹配");
         }
         entry.getFuture().complete(approved);

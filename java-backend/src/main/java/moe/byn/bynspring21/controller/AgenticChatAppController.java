@@ -111,6 +111,18 @@ public class AgenticChatAppController {
         return R.ok(result);
     }
 
+    @Operation(summary = "获取当前用户进行中的流式对话列表")
+    @GetMapping("streams/inflight")
+    public R<java.util.List<AgenticChatAppVo.InflightStreamVo>> listInflightStreams() {
+        return R.ok(agenticChatAppService.listInflightStreams());
+    }
+
+    @Operation(summary = "恢复已断开的流式对话（SSE 重放历史帧 + 实时推送）")
+    @PostMapping(value = "chatStream/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter resumeChatStream(@Validated @RequestBody AgenticChatAppVo.ResumeStreamVo vo) {
+        return agenticChatAppService.resumeChatStream(vo);
+    }
+
     @Operation(summary = "提交 Pyodide 代码执行结果")
     @PostMapping("pyodideToolResult")
     public R<Void> submitPyodideToolResult(@Validated @RequestBody PyodideToolResultVo vo) {

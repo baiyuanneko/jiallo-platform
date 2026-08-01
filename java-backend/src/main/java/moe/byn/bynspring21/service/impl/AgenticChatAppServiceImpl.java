@@ -45,6 +45,7 @@ import moe.byn.bynspring21.service.MinioService;
 import moe.byn.bynspring21.service.SysConfigService;
 import moe.byn.bynspring21.service.SysLlmModelService;
 import moe.byn.bynspring21.service.UserGroupMemberService;
+import moe.byn.bynspring21.stream.ActiveStreamRegistry;
 import moe.byn.bynspring21.utils.AgenticToolResolver;
 import moe.byn.bynspring21.utils.MimeUtils;
 import moe.byn.bynspring21.utils.ReasoningContentHelper;
@@ -209,6 +210,9 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     @Qualifier("sseLightTaskExecutor")
     private ExecutorService sseLightTaskExecutor;
 
+    @Autowired
+    private ActiveStreamRegistry activeStreamRegistry;
+
     @Override
     public SseEmitter chatStream(AgenticChatAppVo.ChatStreamVo vo) {
         SseEmitter emitter = new SseEmitter(900_000L);
@@ -321,13 +325,18 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
             userFlags.put(streamUniqueKey, cancelFlag);
         }
 
-        // 立即发送 streamUniqueKey，让前端能够在后续取消此流
-        try {
-            emitter.send(SseEmitter.event().name("streamUniqueKey").data(streamUniqueKey));
-        } catch (IOException e) {
-            removeUserStreamFlag(userId, userFlags, streamUniqueKey);
-            return emitter;
-        }
+        // 注册直播流：记录帧日志 + 多订阅者 fanout，供断线重连恢复
+        String existingSessionId = (vo.getSessionId() != null && !vo.getSessionId().isBlank())
+                ? vo.getSessionId() : null;
+        String userMessagePreview = vo.getTextContent() == null ? ""
+                : vo.getTextContent().substring(0, Math.min(100, vo.getTextContent().length()));
+        ActiveStreamRegistry.LiveStream liveStream = activeStreamRegistry.register(
+                streamUniqueKey, userId, existingSessionId, vo.getAgentType(),
+                vo.getModelId(), vo.getModelType(), userMessagePreview);
+        liveStream.attach(emitter);
+
+        // 立即发送 streamUniqueKey，让前端能够在后续取消此流（经 publish 记入重放日志）
+        liveStream.publish("streamUniqueKey", streamUniqueKey);
 
         try {
             CompletableFuture.runAsync(() -> {
@@ -511,7 +520,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     try {
                         ReasoningContentHelper.prepareMessages(messages);
                         Prompt prompt = new Prompt(messages, streamOptions);
-                        streamChatAndSend(chatModel, prompt, emitter, fullResponse, fullReasoning,
+                        streamChatAndSend(chatModel, prompt, liveStream, fullResponse, fullReasoning,
                                 promptTokens, completionTokens, cachedTokens, reasoningTokens, cancelFlag);
                         if (cancelFlag.get()) throw new ChatStreamCancelledException("用户取消");
                     } finally {
@@ -528,7 +537,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             ToolCallingManager.builder()
                                     .toolCallbackResolver(new StaticToolCallbackResolver(Arrays.asList(toolCallbacks)))
                                     .build(),
-                            emitter,
+                            liveStream::publish,
                             collector
                     );
 
@@ -543,8 +552,8 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
 
                     List<Message> workingMessages = new ArrayList<>(messages);
 
-                    // 设置 Pyodide 工具上下文（SSE emitter + userId）
-                    PyodideCodeRunner.setContext(emitter, userId);
+                    // 设置 Pyodide 工具上下文（LiveStream 事件发布器 + userId）
+                    PyodideCodeRunner.setContext(liveStream::publish, userId);
                     // 设置 Memory 工具上下文（userId + agentType）
                     MemoryTools.setContext(userId, vo.getAgentType());
                     // 设置 RAG 知识库工具上下文（scope + libraryIds）
@@ -555,7 +564,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             // 新会话提前分配ID（ASSIGN_ID 会沿用已设置的ID），保证工作区目录与最终会话ID一致
                             session.setId(IdWorker.getIdStr());
                         }
-                        ClawToolContext.setContext(userId, session.getId(), clawLevel, clawApprovalMode.getCode(), emitter);
+                        ClawToolContext.setContext(userId, session.getId(), clawLevel, clawApprovalMode.getCode(), liveStream::publish);
                     }
                     try {
                         for (int iteration = 0; iteration < 50; iteration++) {
@@ -568,7 +577,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             ChatResponse aggregated;
                             try {
                                 ReasoningContentHelper.prepareMessages(workingMessages);
-                                aggregated = aggregateStream(chatModel, iterationPrompt, emitter, fullResponse, outReasoning,
+                                aggregated = aggregateStream(chatModel, iterationPrompt, liveStream, fullResponse, outReasoning,
                                         promptTokens, completionTokens, cachedTokens, reasoningTokens, cancelFlag);
                             } finally {
                                 ReasoningContentHelper.clear();
@@ -633,19 +642,19 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                         promptTokens[0], completionTokens[0], cachedTokens[0], reasoningTokens[0]);
 
                 if (isNewSession) {
-                    emitter.send(SseEmitter.event().name("sessionTitle").data(
+                    liveStream.publish("sessionTitle",
                             JSON.toJSONString(Map.of("sessionId", session.getId(),
-                                    "sessionName", session.getSessionName()))));
+                                    "sessionName", session.getSessionName())));
                 }
 
-                emitter.send(SseEmitter.event().name("done").data(
+                liveStream.finish("done",
                         JSON.toJSONString(Map.of("sessionId", session.getId(),
                                 "userMessageId", savedIds.get("userMessageId"),
                                 "messageId", savedIds.get("messageId"),
                                 "promptTokenCount", promptTokens[0],
                                 "completionTokenCount", completionTokens[0],
                                 "cachedTokenCount", cachedTokens[0],
-                                "reasoningTokenCount", reasoningTokens[0]))));
+                                "reasoningTokenCount", reasoningTokens[0])));
 
                 CompletableFuture<Map<String, String>> pendingFuture = streamStopResults.remove(streamUniqueKey);
                 if (pendingFuture != null) {
@@ -658,8 +667,6 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             "cachedTokenCount", String.valueOf(cachedTokens[0]),
                             "reasoningTokenCount", String.valueOf(reasoningTokens[0])));
                 }
-
-                emitter.complete();
 
             } catch (ChatStreamCancelledException e) {
                 log.info("聊天流被用户取消，保存已有内容, userId={}", userId);
@@ -682,19 +689,19 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                             promptTokens[0], completionTokens[0], cachedTokens[0], reasoningTokens[0]);
 
                     if (isNewSession) {
-                        emitter.send(SseEmitter.event().name("sessionTitle").data(
+                        liveStream.publish("sessionTitle",
                                 JSON.toJSONString(Map.of("sessionId", session.getId(),
-                                        "sessionName", session.getSessionName()))));
+                                        "sessionName", session.getSessionName())));
                     }
 
-                    emitter.send(SseEmitter.event().name("done").data(
+                    liveStream.finish("done",
                             JSON.toJSONString(Map.of("sessionId", session.getId(),
                                     "userMessageId", savedIds.get("userMessageId"),
                                     "messageId", savedIds.get("messageId"),
                                     "promptTokenCount", promptTokens[0],
                                     "completionTokenCount", completionTokens[0],
                                     "cachedTokenCount", cachedTokens[0],
-                                    "reasoningTokenCount", reasoningTokens[0]))));
+                                    "reasoningTokenCount", reasoningTokens[0])));
 
                     CompletableFuture<Map<String, String>> pendingFuture = streamStopResults.remove(streamUniqueKey);
                     if (pendingFuture != null) {
@@ -709,29 +716,23 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     }
                 } catch (Exception ex) {
                     log.error("保存已取消的流数据时出错", ex);
+                    liveStream.fail("取消保存失败");
                 }
-                try { emitter.complete(); } catch (Exception ignored) {}
             } catch (Exception e) {
                 log.error("chatStream 处理异常", e);
-                try {
-                    String errorMsg = e instanceof BynBaseException
-                            ? e.getMessage()
-                            : extractApiErrorDetail(e);
-                    emitter.send(SseEmitter.event().name("error").data(errorMsg));
-                } catch (IOException ex) {
-                    // 连接已断开，无需处理
-                }
-                emitter.completeWithError(e);
+                String errorMsg = e instanceof BynBaseException
+                        ? e.getMessage()
+                        : extractApiErrorDetail(e);
+                liveStream.fail(errorMsg);
             } finally {
+                activeStreamRegistry.remove(streamUniqueKey);
                 removeUserStreamFlag(userId, userFlags, streamUniqueKey);
             }
             }, sseStreamingExecutor);
         } catch (java.util.concurrent.RejectedExecutionException e) {
+            liveStream.fail("SSE 流式任务队列已满，请稍后重试");
+            activeStreamRegistry.remove(streamUniqueKey);
             removeUserStreamFlag(userId, userFlags, streamUniqueKey);
-            try {
-                emitter.send(SseEmitter.event().name("error").data("SSE 流式任务队列已满，请稍后重试"));
-                emitter.complete();
-            } catch (IOException ignored) {}
         }
 
         return emitter;
@@ -1021,7 +1022,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     }
 
     private void streamChatAndSend(ChatModel chatModel, Prompt prompt,
-                                    SseEmitter emitter, StringBuilder fullResponse,
+                                    ActiveStreamRegistry.LiveStream liveStream, StringBuilder fullResponse,
                                     StringBuilder reasoningContent,
                                     long[] promptTokens, long[] completionTokens,
                                     long[] cachedTokens, long[] reasoningTokens,
@@ -1031,49 +1032,45 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         chatModel.stream(prompt)
                 .doOnNext(chatResponse -> {
                     if (cancelFlag.get()) { latch.countDown(); return; }
-                    try {
-                        var generation = chatResponse.getResult();
-                        if (generation == null) return;
-                        var message = generation.getOutput();
+                    var generation = chatResponse.getResult();
+                    if (generation == null) return;
+                    var message = generation.getOutput();
 
-                        Map<String, Object> metadata = message.getMetadata();
-                        if (metadata != null && metadata.containsKey("reasoningContent")) {
-                            String reasoning = (String) metadata.get("reasoningContent");
-                            if (reasoning != null && !reasoning.isEmpty()) {
-                                reasoningContent.append(reasoning);
-                                emitter.send(SseEmitter.event().name("reasoning").data(reasoning));
+                    Map<String, Object> metadata = message.getMetadata();
+                    if (metadata != null && metadata.containsKey("reasoningContent")) {
+                        String reasoning = (String) metadata.get("reasoningContent");
+                        if (reasoning != null && !reasoning.isEmpty()) {
+                            reasoningContent.append(reasoning);
+                            liveStream.publish("reasoning", reasoning);
+                        }
+                    }
+
+                    String text = message.getText();
+                    if (text != null && !text.isEmpty()) {
+                        fullResponse.append(text);
+                        liveStream.publish(null, text);
+                    }
+
+                    Usage usage = chatResponse.getMetadata().getUsage();
+                    if (usage != null) {
+                        if (usage.getPromptTokens() != null && usage.getPromptTokens() > 0) {
+                            promptTokens[0] = usage.getPromptTokens();
+                        }
+                        if (usage.getCompletionTokens() != null && usage.getCompletionTokens() > 0) {
+                            completionTokens[0] = usage.getCompletionTokens();
+                        }
+                        if (usage.getNativeUsage() instanceof OpenAiApi.Usage openAiUsage) {
+                            if (openAiUsage.promptTokensDetails() != null
+                                    && openAiUsage.promptTokensDetails().cachedTokens() != null
+                                    && openAiUsage.promptTokensDetails().cachedTokens() > 0) {
+                                cachedTokens[0] = openAiUsage.promptTokensDetails().cachedTokens();
+                            }
+                            if (openAiUsage.completionTokenDetails() != null
+                                    && openAiUsage.completionTokenDetails().reasoningTokens() != null
+                                    && openAiUsage.completionTokenDetails().reasoningTokens() > 0) {
+                                reasoningTokens[0] = openAiUsage.completionTokenDetails().reasoningTokens();
                             }
                         }
-
-                        String text = message.getText();
-                        if (text != null && !text.isEmpty()) {
-                            fullResponse.append(text);
-                            emitter.send(SseEmitter.event().data(text));
-                        }
-
-                        Usage usage = chatResponse.getMetadata().getUsage();
-                        if (usage != null) {
-                            if (usage.getPromptTokens() != null && usage.getPromptTokens() > 0) {
-                                promptTokens[0] = usage.getPromptTokens();
-                            }
-                            if (usage.getCompletionTokens() != null && usage.getCompletionTokens() > 0) {
-                                completionTokens[0] = usage.getCompletionTokens();
-                            }
-                            if (usage.getNativeUsage() instanceof OpenAiApi.Usage openAiUsage) {
-                                if (openAiUsage.promptTokensDetails() != null
-                                        && openAiUsage.promptTokensDetails().cachedTokens() != null
-                                        && openAiUsage.promptTokensDetails().cachedTokens() > 0) {
-                                    cachedTokens[0] = openAiUsage.promptTokensDetails().cachedTokens();
-                                }
-                                if (openAiUsage.completionTokenDetails() != null
-                                        && openAiUsage.completionTokenDetails().reasoningTokens() != null
-                                        && openAiUsage.completionTokenDetails().reasoningTokens() > 0) {
-                                    reasoningTokens[0] = openAiUsage.completionTokenDetails().reasoningTokens();
-                                }
-                            }
-                        }
-                    } catch (IOException e) {
-                        log.error("SSE 发送失败，客户端可能已断开", e);
                     }
                 })
                 .doOnComplete(latch::countDown)
@@ -1090,7 +1087,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     }
 
     private ChatResponse aggregateStream(ChatModel chatModel, Prompt prompt,
-                                          SseEmitter emitter, StringBuilder fullResponse,
+                                          ActiveStreamRegistry.LiveStream liveStream, StringBuilder fullResponse,
                                           StringBuilder[] outReasoning,
                                           long[] promptTokens, long[] completionTokens,
                                           long[] cachedTokens, long[] reasoningTokens,
@@ -1104,59 +1101,55 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         chatModel.stream(prompt)
                 .doOnNext(chatResponse -> {
                     if (cancelFlag.get()) { latch.countDown(); return; }
-                    try {
-                        var generation = chatResponse.getResult();
-                        if (generation == null) return;
-                        var message = generation.getOutput();
+                    var generation = chatResponse.getResult();
+                    if (generation == null) return;
+                    var message = generation.getOutput();
 
-                        Map<String, Object> metadata = message.getMetadata();
-                        if (metadata != null && metadata.containsKey("reasoningContent")) {
-                            String reasoning = (String) metadata.get("reasoningContent");
-                            if (reasoning != null && !reasoning.isEmpty()) {
-                                aggregatedMetadata.put("reasoningContent",
-                                        aggregatedMetadata.getOrDefault("reasoningContent", "") + reasoning);
-                                emitter.send(SseEmitter.event().name("reasoning").data(reasoning));
+                    Map<String, Object> metadata = message.getMetadata();
+                    if (metadata != null && metadata.containsKey("reasoningContent")) {
+                        String reasoning = (String) metadata.get("reasoningContent");
+                        if (reasoning != null && !reasoning.isEmpty()) {
+                            aggregatedMetadata.put("reasoningContent",
+                                    aggregatedMetadata.getOrDefault("reasoningContent", "") + reasoning);
+                            liveStream.publish("reasoning", reasoning);
+                        }
+                    }
+
+                    String text = message.getText();
+                    if (text != null && !text.isEmpty()) {
+                        aggregatedText.append(text);
+                        fullResponse.append(text);
+                        liveStream.publish(null, text);
+                    }
+
+                    if (message.getToolCalls() != null) {
+                        for (var tc : message.getToolCalls()) {
+                            if (tc.name() != null && !toolCalls.stream().anyMatch(e -> e.id().equals(tc.id()))) {
+                                toolCalls.add(tc);
                             }
                         }
+                    }
 
-                        String text = message.getText();
-                        if (text != null && !text.isEmpty()) {
-                            aggregatedText.append(text);
-                            fullResponse.append(text);
-                            emitter.send(SseEmitter.event().data(text));
+                    Usage usage = chatResponse.getMetadata().getUsage();
+                    if (usage != null) {
+                        if (usage.getPromptTokens() != null && usage.getPromptTokens() > 0) {
+                            promptTokens[0] = usage.getPromptTokens();
                         }
-
-                        if (message.getToolCalls() != null) {
-                            for (var tc : message.getToolCalls()) {
-                                if (tc.name() != null && !toolCalls.stream().anyMatch(e -> e.id().equals(tc.id()))) {
-                                    toolCalls.add(tc);
-                                }
-                            }
+                        if (usage.getCompletionTokens() != null && usage.getCompletionTokens() > 0) {
+                            completionTokens[0] = usage.getCompletionTokens();
                         }
-
-                        Usage usage = chatResponse.getMetadata().getUsage();
-                        if (usage != null) {
-                            if (usage.getPromptTokens() != null && usage.getPromptTokens() > 0) {
-                                promptTokens[0] = usage.getPromptTokens();
+                        if (usage.getNativeUsage() instanceof OpenAiApi.Usage openAiUsage) {
+                            if (openAiUsage.promptTokensDetails() != null
+                                    && openAiUsage.promptTokensDetails().cachedTokens() != null
+                                    && openAiUsage.promptTokensDetails().cachedTokens() > 0) {
+                                cachedTokens[0] = openAiUsage.promptTokensDetails().cachedTokens();
                             }
-                            if (usage.getCompletionTokens() != null && usage.getCompletionTokens() > 0) {
-                                completionTokens[0] = usage.getCompletionTokens();
-                            }
-                            if (usage.getNativeUsage() instanceof OpenAiApi.Usage openAiUsage) {
-                                if (openAiUsage.promptTokensDetails() != null
-                                        && openAiUsage.promptTokensDetails().cachedTokens() != null
-                                        && openAiUsage.promptTokensDetails().cachedTokens() > 0) {
-                                    cachedTokens[0] = openAiUsage.promptTokensDetails().cachedTokens();
-                                }
-                                if (openAiUsage.completionTokenDetails() != null
-                                        && openAiUsage.completionTokenDetails().reasoningTokens() != null
-                                        && openAiUsage.completionTokenDetails().reasoningTokens() > 0) {
-                                    reasoningTokens[0] = openAiUsage.completionTokenDetails().reasoningTokens();
-                                }
+                            if (openAiUsage.completionTokenDetails() != null
+                                    && openAiUsage.completionTokenDetails().reasoningTokens() != null
+                                    && openAiUsage.completionTokenDetails().reasoningTokens() > 0) {
+                                reasoningTokens[0] = openAiUsage.completionTokenDetails().reasoningTokens();
                             }
                         }
-                    } catch (IOException e) {
-                        log.error("SSE 发送失败", e);
                     }
                 })
                 .doOnComplete(latch::countDown)
@@ -1414,6 +1407,39 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
             }
         }
         return Map.of();
+    }
+
+    @Override
+    public List<AgenticChatAppVo.InflightStreamVo> listInflightStreams() {
+        String userId = securityUtil.getUserId();
+        return activeStreamRegistry.listByUserId(userId).stream()
+                .map(ls -> AgenticChatAppVo.InflightStreamVo.builder()
+                        .streamUniqueKey(ls.getStreamUniqueKey())
+                        .sessionId(ls.getSessionId())
+                        .agentType(ls.getAgentType())
+                        .modelId(ls.getModelId())
+                        .modelType(ls.getModelType())
+                        .startedAt(ls.getStartedAt())
+                        .userMessagePreview(ls.getUserMessagePreview())
+                        .build())
+                .toList();
+    }
+
+    @Override
+    public SseEmitter resumeChatStream(AgenticChatAppVo.ResumeStreamVo vo) {
+        SseEmitter emitter = new SseEmitter(900_000L);
+        String userId = securityUtil.getUserId();
+        ActiveStreamRegistry.LiveStream liveStream = activeStreamRegistry.get(vo.getStreamUniqueKey());
+        if (liveStream == null || !userId.equals(liveStream.getUserId())) {
+            try {
+                emitter.send(SseEmitter.event().name("error").data("流不存在或已结束"));
+                emitter.complete();
+            } catch (IOException ignored) {
+            }
+            return emitter;
+        }
+        liveStream.attach(emitter);
+        return emitter;
     }
 
     // ==================== 会话分享功能 ====================

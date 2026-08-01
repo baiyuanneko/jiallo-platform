@@ -6,10 +6,9 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 @Slf4j
 @Component
@@ -17,20 +16,20 @@ public class PyodideCodeRunner {
 
     private static final long TIMEOUT_SECONDS = 120;
 
-    private static final ThreadLocal<SseEmitter> emitterHolder = new ThreadLocal<>();
+    private static final ThreadLocal<BiConsumer<String, String>> publisherHolder = new ThreadLocal<>();
     private static final ThreadLocal<String> userIdHolder = new ThreadLocal<>();
     private static final ThreadLocal<PyodideResultPendingManager.PyodideResult> lastStructuredResult = new ThreadLocal<>();
 
     @Autowired
     private PyodideResultPendingManager pendingManager;
 
-    public static void setContext(SseEmitter emitter, String userId) {
-        emitterHolder.set(emitter);
+    public static void setContext(BiConsumer<String, String> publisher, String userId) {
+        publisherHolder.set(publisher);
         userIdHolder.set(userId);
     }
 
     public static void clearContext() {
-        emitterHolder.remove();
+        publisherHolder.remove();
         userIdHolder.remove();
         lastStructuredResult.remove();
     }
@@ -48,27 +47,22 @@ public class PyodideCodeRunner {
     public String pyodideCodeRunner(
             @ToolParam(description = "要执行的 Python 代码", required = true) String code) {
 
-        SseEmitter emitter = emitterHolder.get();
+        BiConsumer<String, String> publisher = publisherHolder.get();
         String userId = userIdHolder.get();
 
-        if (emitter == null || userId == null) {
+        if (publisher == null || userId == null) {
             return "错误：Pyodide 执行上下文未初始化";
         }
 
         String requestId = pendingManager.createPending(userId);
 
         // 发送 tool_execution_request SSE 事件，前端收到后执行 Pyodide
-        try {
-            String payload = JSON.toJSONString(Map.of(
-                    "requestId", requestId,
-                    "code", code
-            ));
-            emitter.send(SseEmitter.event().name("tool_execution_request").data(payload));
-        } catch (IOException e) {
-            log.error("SSE 发送 tool_execution_request 失败", e);
-            pendingManager.removePending(requestId);
-            return "错误：无法发送代码到前端执行";
-        }
+        // 通过 LiveStream publisher 走帧日志 + fanout，断开/恢复的客户端重放后仍可应答
+        String payload = JSON.toJSONString(Map.of(
+                "requestId", requestId,
+                "code", code
+        ));
+        publisher.accept("tool_execution_request", payload);
 
         // 阻塞等待前端执行结果
         PyodideResultPendingManager.PyodideResult result = pendingManager.waitForResult(requestId, TIMEOUT_SECONDS);
