@@ -73,10 +73,11 @@ myapp:
     password: ${INITIAL_ADMIN_PASSWORD}
   clientMode:
     isSsoClient: false
-    externalSsoAdminUserId: ${SSO_EXTERNAL_ADMIN_USER_ID:}
+    externalSsoAdminUserIds: ${SSO_EXTERNAL_ADMIN_USER_IDS:}
     ssoServerInvokeUrl: ${SSO_SERVER_INVOKE_URL:}
     ssoClientUniqueName: ${SSO_CLIENT_UNIQUE_NAME:}
     ssoClientSecret: ${SSO_CLIENT_SECRET:}
+  superAdminUserIds: ${SUPER_ADMIN_USER_IDS:}
 
 minio:
   endpoint: ${MINIO_ENDPOINT}

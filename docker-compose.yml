@@ -67,6 +67,10 @@ services:
       BOCHA_API_KEY: ${BOCHA_API_KEY}
       # Flyway 自动迁移开关，默认开启；在 .env 设 FLYWAY_ENABLED=false 可关闭（改回手动执行 SQL）
       FLYWAY_ENABLED: ${FLYWAY_ENABLED:-true}
+      # SSO Client 模式下由 SSO 服务端认定为管理员的外部用户 ID 列表（逗号分隔，可选）
+      SSO_EXTERNAL_ADMIN_USER_IDS: ${SSO_EXTERNAL_ADMIN_USER_IDS:-}
+      # 超级管理员用户 ID 列表（逗号分隔，可选）
+      SUPER_ADMIN_USER_IDS: ${SUPER_ADMIN_USER_IDS:-}
     depends_on:
       mysql:
         condition: service_healthy

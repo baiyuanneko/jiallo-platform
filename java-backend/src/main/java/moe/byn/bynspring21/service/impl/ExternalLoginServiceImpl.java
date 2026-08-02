@@ -38,8 +38,8 @@ public class ExternalLoginServiceImpl implements ExternalLoginService {
     @Value("${myapp.clientMode.isSsoClient}")
     private boolean isSsoClient;
 
-    @Value("${myapp.clientMode.externalSsoAdminUserId}")
-    private String externalSsoAdminUserId;
+    @Value("${myapp.clientMode.externalSsoAdminUserIds}")
+    private String externalSsoAdminUserIds;
 
     @Value("${myapp.clientMode.ssoServerInvokeUrl}")
     private String ssoServerInvokeUrl;
