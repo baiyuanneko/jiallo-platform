@@ -10,6 +10,7 @@ import {
   SecurityScanOutlined,
   RobotOutlined,
   TeamOutlined,
+  SendOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
@@ -58,6 +59,10 @@ function toggleSidebar() {
           <a-menu-item key="/admin/system-config">
             <SettingOutlined />
             <span>系统配置</span>
+          </a-menu-item>
+          <a-menu-item key="/admin/telegram-bot">
+            <SendOutlined />
+            <span>Telegram 机器人</span>
           </a-menu-item>
           <a-menu-item key="/admin/llm-providers">
             <CloudServerOutlined />

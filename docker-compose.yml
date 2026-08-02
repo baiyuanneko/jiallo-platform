@@ -43,6 +43,9 @@ services:
     # are owned by the host user instead of root (same convention as the dev
     # stack). Defaults to 1000:1000; override with APP_UID/APP_GID if needed.
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    # 让容器能通过 host.docker.internal 访问宿主机（如宿主机上的代理，见 TGBOT_PROXY_URL）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
@@ -71,6 +74,9 @@ services:
       SSO_EXTERNAL_ADMIN_USER_IDS: ${SSO_EXTERNAL_ADMIN_USER_IDS:-}
       # 超级管理员用户 ID 列表（逗号分隔，可选）
       SUPER_ADMIN_USER_IDS: ${SUPER_ADMIN_USER_IDS:-}
+      # Telegram Bot 代理（可选；proxyUrl 形如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）
+      TGBOT_PROXY_ENABLED: ${TGBOT_PROXY_ENABLED:-false}
+      TGBOT_PROXY_URL: ${TGBOT_PROXY_URL:-}
     depends_on:
       mysql:
         condition: service_healthy

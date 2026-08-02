@@ -630,4 +630,26 @@ public class BusiAdminVo {
         @NotBlank(message = "groupId 不能为空")
         private String groupId;
     }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Telegram 机器人配置")
+    public static class TgBotConfigVo {
+        @Schema(description = "是否启用机器人", example = "false")
+        private Boolean enabled;
+
+        @Schema(description = "机器人 Token")
+        private String token;
+
+        @Schema(description = "ChatId 处理模式：whitelist-白名单，blacklist-黑名单", example = "whitelist")
+        private String chatIdMode;
+
+        @Schema(description = "白名单 ChatId 列表（逗号分隔）")
+        private String whitelistChatIds;
+
+        @Schema(description = "黑名单 ChatId 列表（逗号分隔）")
+        private String blacklistChatIds;
+    }
 }

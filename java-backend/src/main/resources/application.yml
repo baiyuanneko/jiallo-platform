@@ -78,6 +78,9 @@ myapp:
     ssoClientUniqueName: ${SSO_CLIENT_UNIQUE_NAME:}
     ssoClientSecret: ${SSO_CLIENT_SECRET:}
   superAdminUserIds: ${SUPER_ADMIN_USER_IDS:}
+  tgbot:
+    proxyEnabled: ${TGBOT_PROXY_ENABLED:false}
+    proxyUrl: ${TGBOT_PROXY_URL:}
 
 minio:
   endpoint: ${MINIO_ENDPOINT}

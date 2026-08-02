@@ -431,6 +431,20 @@ export type RAllowRegisterSwitch = ApiResponse<null>
 export type RDigitalBynPrompt = ApiResponse<string | null>
 export type RClawLikePrompt = ApiResponse<string | null>
 
+// ==================== Telegram 机器人配置类型 ====================
+
+export type TgBotChatIdMode = 'whitelist' | 'blacklist'
+
+export interface TgBotConfig {
+  enabled: boolean
+  token: string
+  chatIdMode: TgBotChatIdMode
+  whitelistChatIds: string
+  blacklistChatIds: string
+}
+
+export type RTgBotConfig = ApiResponse<TgBotConfig>
+
 // ==================== Claw 安全级别设置类型 ====================
 
 export interface ClawSecurityLevelRoleItem {

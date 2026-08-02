@@ -133,6 +133,12 @@ const router = createRouter({
           component: () => import('../views/admin/SystemConfig.vue'),
         },
         {
+          path: 'telegram-bot',
+          name: 'adminTelegramBot',
+          component: () => import('../views/admin/TelegramBotManagement.vue'),
+          meta: { title: 'Telegram 机器人' },
+        },
+        {
           path: 'llm-providers',
           name: 'adminLlmProviders',
           component: () => import('../views/admin/LlmProviderManagement.vue'),

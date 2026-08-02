@@ -32,6 +32,8 @@ import type {
   RAllowRegisterSwitch,
   RDigitalBynPrompt,
   RClawLikePrompt,
+  TgBotConfig,
+  RTgBotConfig,
   QueryLlmProvidersVo,
   QueryLlmModelsVo,
   QueryPagedLlmModelsVo,
@@ -448,6 +450,22 @@ export function adminClawLikeApprovalModelSwitchApi(modelId: string) {
   return request.post<RVoid>('/admin/config/clawLikeApprovalModelSwitch', null, {
     params: { modelId },
   })
+}
+
+// ==================== Telegram 机器人配置 API ====================
+
+/**
+ * 获取 Telegram 机器人配置
+ */
+export function adminGetTgBotConfigApi() {
+  return request.get<RTgBotConfig>('/admin/config/tgBot')
+}
+
+/**
+ * 设置 Telegram 机器人配置（保存后机器人热重载）
+ */
+export function adminSetTgBotConfigApi(data: TgBotConfig) {
+  return request.post<RVoid>('/admin/config/tgBot', data)
 }
 
 // ==================== AgentType 授权管理 API ====================

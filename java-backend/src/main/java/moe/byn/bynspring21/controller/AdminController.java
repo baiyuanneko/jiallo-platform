@@ -19,6 +19,8 @@ import moe.byn.bynspring21.entity.base.R;
 import moe.byn.bynspring21.entity.dto.AdminDto;
 import moe.byn.bynspring21.entity.vo.AdminVo;
 import moe.byn.bynspring21.entity.vo.BusiAdminVo;
+import moe.byn.bynspring21.modules.tgbotgen.service.TgBotGenConfigService;
+import moe.byn.bynspring21.modules.tgbotgen.service.TgBotGenManager;
 import moe.byn.bynspring21.service.AdminService;
 import moe.byn.bynspring21.service.BusiAdminService;
 import moe.byn.bynspring21.service.FeatureModuleAvailabilityService;
@@ -47,6 +49,12 @@ public class AdminController {
 
     @Autowired
     private FeatureModuleAvailabilityService featureModuleAvailabilityService;
+
+    @Autowired
+    private TgBotGenConfigService tgBotGenConfigService;
+
+    @Autowired
+    private TgBotGenManager tgBotGenManager;
 
     @Operation(
             summary = "查询用户列表",
@@ -524,6 +532,40 @@ public class AdminController {
     public R<Void> setClawLikeSystemPrompt(
             @Validated @RequestBody BusiAdminVo.SetClawLikePromptVo vo) {
         sysConfigService.setConfigValue("clawLikeSystemPrompt", vo.getPrompt());
+        return R.ok();
+    }
+
+    @Operation(
+            summary = "获取 Telegram 机器人配置",
+            description = "获取 Telegram 通用机器人的启用状态、Token、ChatId 处理模式及黑白名单",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @GetMapping("config/tgBot")
+    public R<BusiAdminVo.TgBotConfigVo> getTgBotConfig() {
+        return R.ok(BusiAdminVo.TgBotConfigVo.builder()
+                .enabled(tgBotGenConfigService.isEnabled())
+                .token(tgBotGenConfigService.getToken())
+                .chatIdMode(tgBotGenConfigService.getChatIdMode())
+                .whitelistChatIds(tgBotGenConfigService.getWhitelistChatIdsRaw())
+                .blacklistChatIds(tgBotGenConfigService.getBlacklistChatIdsRaw())
+                .build());
+    }
+
+    @Operation(
+            summary = "设置 Telegram 机器人配置",
+            description = "保存 Telegram 通用机器人配置并热重载机器人（启用状态/Token 变更即时生效）",
+            security = @SecurityRequirement(name = "bearer-jwt")
+    )
+    @PostMapping("config/tgBot")
+    public R<Void> setTgBotConfig(
+            @Validated @RequestBody BusiAdminVo.TgBotConfigVo vo) {
+        tgBotGenConfigService.saveConfig(
+                Boolean.TRUE.equals(vo.getEnabled()),
+                vo.getToken(),
+                vo.getChatIdMode(),
+                vo.getWhitelistChatIds(),
+                vo.getBlacklistChatIds());
+        tgBotGenManager.reload();
         return R.ok();
     }
 
