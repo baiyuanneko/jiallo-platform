@@ -56,7 +56,9 @@ const agentOptions = computed(() =>
 
 const enabledToolsOptions = computed(() => [
   { value: 'bocha_web_search', label: '联网搜索（博查）' },
+  { value: 'deepseek_web_search', label: '联网搜索（DeepSeek）' },
   { value: 'web_fetch', label: '阅读网页' },
+  { value: 'deepseek_web_fetch', label: '阅读网页（DeepSeek）' },
   { value: 'get_datetime', label: '日期时间' },
   { value: 'pyodide_code_runner', label: 'Python 执行' },
   { value: 'memory_tools', label: '长期记忆' },
@@ -686,7 +688,7 @@ function handleInput() {
                 <DeleteOutlined style="font-size: 14px; color: #8c8c8c;" />
                 <span class="chip-menu__label">禁用所有能力</span>
               </div>
-              <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'web_fetch', 'get_datetime', 'pyodide_code_runner', 'memory_tools', 'rag_knowledge_base'])">
+              <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'deepseek_web_search', 'web_fetch', 'deepseek_web_fetch', 'get_datetime', 'pyodide_code_runner', 'memory_tools', 'rag_knowledge_base'])">
                 <RocketOutlined style="font-size: 14px; color: #1677ff;" />
                 <span class="chip-menu__label">启用全部能力</span>
               </div>
@@ -699,7 +701,7 @@ function handleInput() {
                   </div>
                 </a-tooltip>
                 <a-tooltip placement="right" title="联网搜索、阅读网页、日期时间、长期记忆">
-                  <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'web_fetch', 'get_datetime', 'memory_tools'])">
+                  <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'deepseek_web_search', 'web_fetch', 'deepseek_web_fetch', 'get_datetime', 'memory_tools'])">
                     <GlobalOutlined style="font-size: 14px; color: #1677ff;" />
                     <span class="chip-menu__label">智能联网问答</span>
                   </div>
@@ -714,7 +716,7 @@ function handleInput() {
                 </template>
                 <template v-if="chatStore.ragModuleAuthorized">
                   <a-tooltip placement="right" title="联网搜索、阅读网页、长期记忆、日期时间、RAG 知识库">
-                    <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'web_fetch', 'memory_tools', 'get_datetime', 'rag_knowledge_base'])">
+                    <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'deepseek_web_search', 'web_fetch', 'deepseek_web_fetch', 'memory_tools', 'get_datetime', 'rag_knowledge_base'])">
                       <ApartmentOutlined style="font-size: 14px; color: #722ed1;" />
                       <span class="chip-menu__label">综合知识问答</span>
                     </div>
@@ -727,7 +729,7 @@ function handleInput() {
                   </div>
                 </a-tooltip>
                 <a-tooltip placement="right" title="联网搜索、阅读网页、Python 执行、日期时间">
-                  <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'web_fetch', 'pyodide_code_runner', 'get_datetime'])">
+                  <div class="chip-menu__item" @click="applyToolScheme(['bocha_web_search', 'deepseek_web_search', 'web_fetch', 'deepseek_web_fetch', 'pyodide_code_runner', 'get_datetime'])">
                     <BarChartOutlined style="font-size: 14px; color: #52c41a;" />
                     <span class="chip-menu__label">数据分析</span>
                   </div>

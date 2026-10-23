@@ -2,6 +2,8 @@ package moe.byn.bynspring21.config;
 
 import lombok.extern.slf4j.Slf4j;
 import moe.byn.bynspring21.entity.tool.BochaWebSearch;
+import moe.byn.bynspring21.entity.tool.DeepseekWebSearch;
+import moe.byn.bynspring21.entity.tool.WebFetch;
 import moe.byn.bynspring21.entity.tool.MemoryTools;
 import moe.byn.bynspring21.entity.tool.PyodideCodeRunner;
 import moe.byn.bynspring21.entity.tool.RagKnowledgeBaseTool;
@@ -49,6 +51,8 @@ public class SseStreamingExecutorConfig {
                 }
                 // 安全网：清理所有工具 ThreadLocal（幂等操作）
                 BochaWebSearch.clearContext();
+                DeepseekWebSearch.clearContext();
+                WebFetch.clearContext();
                 RagKnowledgeBaseTool.clearContext();
                 PyodideCodeRunner.clearContext();
                 MemoryTools.clearContext();

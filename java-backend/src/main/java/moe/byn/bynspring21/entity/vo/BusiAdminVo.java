@@ -640,7 +640,7 @@ public class BusiAdminVo {
         @Schema(description = "是否启用机器人", example = "false")
         private Boolean enabled;
 
-        @Schema(description = "机器人 Token")
+        @Schema(description = "机器人 Token（查询时打码返回；保存时传回打码值表示不修改）")
         private String token;
 
         @Schema(description = "ChatId 处理模式：whitelist-白名单，blacklist-黑名单", example = "whitelist")
@@ -651,5 +651,29 @@ public class BusiAdminVo {
 
         @Schema(description = "黑名单 ChatId 列表（逗号分隔）")
         private String blacklistChatIds;
+
+        @Schema(description = "功能：消息记录（写入 tg_chat_log）", example = "false")
+        private Boolean chatLogEnabled;
+
+        @Schema(description = "功能：网络搜索 /websearch", example = "false")
+        private Boolean webSearchEnabled;
+
+        @Schema(description = "功能：智能问答 /chat", example = "false")
+        private Boolean chatEnabled;
+
+        @Schema(description = "功能：活跃排行 /rank（依赖消息记录）", example = "false")
+        private Boolean rankEnabled;
+
+        @Schema(description = "/chat 使用的模型 ID")
+        private String chatModelId;
+
+        @Schema(description = "/chat 自定义系统提示词，为空使用内置提示词")
+        private String chatSystemPrompt;
+
+        @Schema(description = "机器人名称（/help、/about 中展示），为空使用默认值", example = "Telegram 智能机器人")
+        private String botName;
+
+        @Schema(description = "机器人更新日期（/help、/about 中展示），为空使用默认值", example = "2026-10-24")
+        private String botUpdateDate;
     }
 }

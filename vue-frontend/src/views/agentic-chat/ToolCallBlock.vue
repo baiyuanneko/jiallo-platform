@@ -32,7 +32,7 @@ function onCollapseChange(keys: string[] | string) {
   expandedBlocks.set(resolvedBlockKey.value, arr.includes('1'))
 }
 
-const isSearchTool = computed(() => props.name === 'bocha_web_search')
+const isSearchTool = computed(() => props.name === 'bocha_web_search' || props.name === 'deepseek_web_search')
 const isPyodideTool = computed(() => props.name === 'pyodide_code_runner')
 const isRagSearchTool = computed(() => props.name === 'searchRagKnowledgeBase')
 
@@ -97,7 +97,9 @@ const decodedArguments = computed(() => {
 const displayName = computed(() => {
   const nameMap: Record<string, string> = {
     bocha_web_search: '网页搜索',
+    deepseek_web_search: '网页搜索（DeepSeek）',
     web_fetch: '阅读网页',
+    deepseek_web_fetch: '阅读网页（DeepSeek）',
     pyodide_code_runner: 'Python 执行',
     readMemory: '回忆',
     overwriteMemory: '整理记忆',

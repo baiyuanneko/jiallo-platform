@@ -101,12 +101,23 @@ jwt:
 bocha:
   api-key: ${BOCHA_API_KEY}
 
+deepseek-tools:
+  api-key: ${DEEPSEEK_API_KEY:}
+  search-timeout: 20000
+  fetch-timeout: 30000
+  max-content-length: 10000
+
 web-fetch:
   timeout: 15000
   max-content-length: 10000
   max-response-body-size: 524288
   max-links: 20
   user-agent: ""
+  # 可选代理（仅 http://host:port），仅获「网页抓取代理」功能模块授权的用户可让 AI 选择使用
+  proxy:
+    url: ${WEB_FETCH_OPTIONAL_WITH_PROXY:}
+    username: ${WEB_FETCH_PROXY_USERNAME:}
+    password: ${WEB_FETCH_PROXY_PASSWORD:}
 
 claw:
   like:

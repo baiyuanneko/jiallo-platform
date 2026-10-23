@@ -537,17 +537,26 @@ public class AdminController {
 
     @Operation(
             summary = "获取 Telegram 机器人配置",
-            description = "获取 Telegram 通用机器人的启用状态、Token、ChatId 处理模式及黑白名单",
+            description = "获取 Telegram 通用机器人的启用状态、Token（打码）、ChatId 处理模式、黑白名单及功能开关",
             security = @SecurityRequirement(name = "bearer-jwt")
     )
     @GetMapping("config/tgBot")
     public R<BusiAdminVo.TgBotConfigVo> getTgBotConfig() {
+        TgBotGenConfigService.RawConfig config = tgBotGenConfigService.loadRawConfigMasked();
         return R.ok(BusiAdminVo.TgBotConfigVo.builder()
-                .enabled(tgBotGenConfigService.isEnabled())
-                .token(tgBotGenConfigService.getToken())
-                .chatIdMode(tgBotGenConfigService.getChatIdMode())
-                .whitelistChatIds(tgBotGenConfigService.getWhitelistChatIdsRaw())
-                .blacklistChatIds(tgBotGenConfigService.getBlacklistChatIdsRaw())
+                .enabled(config.enabled())
+                .token(config.token())
+                .chatIdMode(config.chatIdMode())
+                .whitelistChatIds(config.whitelistChatIds())
+                .blacklistChatIds(config.blacklistChatIds())
+                .chatLogEnabled(config.chatLogEnabled())
+                .webSearchEnabled(config.webSearchEnabled())
+                .chatEnabled(config.chatEnabled())
+                .rankEnabled(config.rankEnabled())
+                .chatModelId(config.chatModelId())
+                .chatSystemPrompt(config.chatSystemPrompt())
+                .botName(config.botName())
+                .botUpdateDate(config.botUpdateDate())
                 .build());
     }
 
@@ -559,12 +568,20 @@ public class AdminController {
     @PostMapping("config/tgBot")
     public R<Void> setTgBotConfig(
             @Validated @RequestBody BusiAdminVo.TgBotConfigVo vo) {
-        tgBotGenConfigService.saveConfig(
+        tgBotGenConfigService.saveConfig(new TgBotGenConfigService.RawConfig(
                 Boolean.TRUE.equals(vo.getEnabled()),
                 vo.getToken(),
                 vo.getChatIdMode(),
                 vo.getWhitelistChatIds(),
-                vo.getBlacklistChatIds());
+                vo.getBlacklistChatIds(),
+                Boolean.TRUE.equals(vo.getChatLogEnabled()),
+                Boolean.TRUE.equals(vo.getWebSearchEnabled()),
+                Boolean.TRUE.equals(vo.getChatEnabled()),
+                Boolean.TRUE.equals(vo.getRankEnabled()),
+                vo.getChatModelId(),
+                vo.getChatSystemPrompt(),
+                vo.getBotName(),
+                vo.getBotUpdateDate()));
         tgBotGenManager.reload();
         return R.ok();
     }

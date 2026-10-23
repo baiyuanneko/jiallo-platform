@@ -22,7 +22,9 @@ public enum AgenticToolEnum {
     WRITE_FILE("write_file", "文件写入"),
     EDIT_FILE("edit_file", "文件编辑"),
     LIST_FILES("list_files", "目录列举"),
-    SEARCH_FILES("search_files", "文件搜索");
+    SEARCH_FILES("search_files", "文件搜索"),
+    DEEPSEEK_WEB_SEARCH("deepseek_web_search", "DeepSeek网页搜索"),
+    DEEPSEEK_WEB_FETCH("deepseek_web_fetch", "DeepSeek网页抓取");
 
     @EnumValue
     @JsonValue

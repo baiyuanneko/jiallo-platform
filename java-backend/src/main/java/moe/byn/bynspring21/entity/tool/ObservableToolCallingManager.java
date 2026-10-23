@@ -83,12 +83,19 @@ public class ObservableToolCallingManager implements ToolCallingManager {
     public record ToolResultEvent(String name, String id, Object result) {}
 
     private static final String STRUCTURED_TOOL_BOCHA = "bochaWebSearch";
+    private static final String STRUCTURED_TOOL_DEEPSEEK_SEARCH = "deepseekWebSearch";
     private static final String STRUCTURED_TOOL_PYODIDE = "pyodideCodeRunner";
     private static final String STRUCTURED_TOOL_RAG = "searchRagKnowledgeBase";
 
     private Object resolveToolResultData(String toolName, String rawData) {
         if (STRUCTURED_TOOL_BOCHA.equals(toolName)) {
             List<BochaWebSearch.SearchResultItem> items = BochaWebSearch.consumeLastStructuredResults();
+            if (!items.isEmpty()) {
+                return items;
+            }
+        }
+        if (STRUCTURED_TOOL_DEEPSEEK_SEARCH.equals(toolName)) {
+            List<BochaWebSearch.SearchResultItem> items = DeepseekWebSearch.consumeLastStructuredResults();
             if (!items.isEmpty()) {
                 return items;
             }

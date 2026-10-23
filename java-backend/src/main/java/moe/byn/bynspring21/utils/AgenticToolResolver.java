@@ -4,6 +4,8 @@ import moe.byn.bynspring21.entity.base.AgenticToolEnum;
 import moe.byn.bynspring21.entity.tool.BochaWebSearch;
 import moe.byn.bynspring21.entity.tool.ClawApprovalPendingManager;
 import moe.byn.bynspring21.entity.tool.ClawApprovalToolCallback;
+import moe.byn.bynspring21.entity.tool.DeepseekWebFetch;
+import moe.byn.bynspring21.entity.tool.DeepseekWebSearch;
 import moe.byn.bynspring21.entity.tool.EditFile;
 import moe.byn.bynspring21.entity.tool.ExecuteShellCommand;
 import moe.byn.bynspring21.entity.tool.GetDatetime;
@@ -14,6 +16,7 @@ import moe.byn.bynspring21.entity.tool.RagKnowledgeBaseTool;
 import moe.byn.bynspring21.entity.tool.ReadFile;
 import moe.byn.bynspring21.entity.tool.SearchFiles;
 import moe.byn.bynspring21.entity.tool.WebFetch;
+import moe.byn.bynspring21.entity.tool.WebFetchProxyHidingToolCallback;
 import moe.byn.bynspring21.entity.tool.WriteFile;
 import moe.byn.bynspring21.service.ClawApprovalJudgeService;
 import org.springframework.ai.support.ToolCallbacks;
@@ -76,6 +79,12 @@ public class AgenticToolResolver {
     @Autowired
     private SearchFiles searchFiles;
 
+    @Autowired
+    private DeepseekWebSearch deepseekWebSearch;
+
+    @Autowired
+    private DeepseekWebFetch deepseekWebFetch;
+
     public List<Object> resolve(List<AgenticToolEnum> tools) {
         if (tools == null || tools.isEmpty()) {
             return Collections.emptyList();
@@ -94,21 +103,35 @@ public class AgenticToolResolver {
                     case EDIT_FILE -> editFile;
                     case LIST_FILES -> listFiles;
                     case SEARCH_FILES -> searchFiles;
+                    case DEEPSEEK_WEB_SEARCH -> deepseekWebSearch;
+                    case DEEPSEEK_WEB_FETCH -> deepseekWebFetch;
                 })
                 .toList();
     }
 
     public ToolCallback[] resolveToolCallbacks(List<AgenticToolEnum> tools) {
-        return resolveToolCallbacks(tools, null, null);
+        return resolveToolCallbacks(tools, null, null, false);
+    }
+
+    public ToolCallback[] resolveToolCallbacks(List<AgenticToolEnum> tools, boolean webFetchProxyAllowed) {
+        return resolveToolCallbacks(tools, null, null, webFetchProxyAllowed);
+    }
+
+    public ToolCallback[] resolveToolCallbacks(List<AgenticToolEnum> tools,
+                                               ClawApprovalJudgeService judgeService,
+                                               ClawApprovalPendingManager pendingManager) {
+        return resolveToolCallbacks(tools, judgeService, pendingManager, false);
     }
 
     /**
      * 解析工具回调，传入审批 bean 时对 Claw-like 专属工具（6 个文件/Shell 工具）包装审批装饰器，
-     * 审批 bean 为空或普通聊天工具不受影响
+     * 审批 bean 为空或普通聊天工具不受影响；
+     * 未获网页抓取代理授权时对 web_fetch 包装 schema 隐藏装饰器，移除 withProxy 参数
      */
     public ToolCallback[] resolveToolCallbacks(List<AgenticToolEnum> tools,
                                                ClawApprovalJudgeService judgeService,
-                                               ClawApprovalPendingManager pendingManager) {
+                                               ClawApprovalPendingManager pendingManager,
+                                               boolean webFetchProxyAllowed) {
         if (tools == null || tools.isEmpty()) {
             return new ToolCallback[0];
         }
@@ -120,6 +143,10 @@ public class AgenticToolResolver {
             if (wrapClawTools && CLAW_LIKE_TOOLS.contains(tool)) {
                 for (ToolCallback callback : callbacks) {
                     result.add(new ClawApprovalToolCallback(callback, judgeService, pendingManager));
+                }
+            } else if (tool == AgenticToolEnum.WEB_FETCH && !webFetchProxyAllowed) {
+                for (ToolCallback callback : callbacks) {
+                    result.add(new WebFetchProxyHidingToolCallback(callback));
                 }
             } else {
                 result.addAll(Arrays.asList(callbacks));
@@ -142,6 +169,8 @@ public class AgenticToolResolver {
             case EDIT_FILE -> editFile;
             case LIST_FILES -> listFiles;
             case SEARCH_FILES -> searchFiles;
+            case DEEPSEEK_WEB_SEARCH -> deepseekWebSearch;
+            case DEEPSEEK_WEB_FETCH -> deepseekWebFetch;
         };
     }
 }

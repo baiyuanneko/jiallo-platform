@@ -23,10 +23,18 @@ public class TgBotGenProperties {
     private String proxyUrl;
 
     /**
+     * 长轮询 getUpdates 超时（秒）。telegrambots 6.x 的 ReaderThread 在长轮询期间持有 BotSession 锁，
+     * 而 BotSession.stop() 同样需要该锁，因此停止/热重载最长需等待一个长轮询周期；
+     * 默认 50 秒会导致后台保存配置后一分钟左右才生效，这里缩短为 10 秒
+     */
+    private static final int GET_UPDATES_TIMEOUT_SECONDS = 10;
+
+    /**
      * 根据 myapp.tgbot.proxy* 构造 DefaultBotOptions；代理未启用或无法解析时返回无代理的默认实例。
      */
     public DefaultBotOptions buildBotOptions() {
         DefaultBotOptions options = new DefaultBotOptions();
+        options.setGetUpdatesTimeout(GET_UPDATES_TIMEOUT_SECONDS);
         if (!proxyEnabled) {
             return options;
         }

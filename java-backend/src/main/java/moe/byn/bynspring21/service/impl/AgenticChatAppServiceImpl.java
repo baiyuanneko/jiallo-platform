@@ -18,6 +18,8 @@ import moe.byn.bynspring21.entity.base.ClawSecurityLevel;
 import moe.byn.bynspring21.entity.tool.BochaWebSearch;
 import moe.byn.bynspring21.entity.tool.ClawApprovalPendingManager;
 import moe.byn.bynspring21.entity.tool.ClawToolContext;
+import moe.byn.bynspring21.entity.tool.DeepseekWebSearch;
+import moe.byn.bynspring21.entity.tool.WebFetch;
 import moe.byn.bynspring21.entity.tool.MemoryTools;
 import moe.byn.bynspring21.entity.tool.RagKnowledgeBaseTool;
 import moe.byn.bynspring21.entity.tool.ObservableToolCallingManager;
@@ -110,6 +112,8 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
     private static final Integer CLAW_LIKE_AGENT_TYPE = 3;
 
     private static final String CLAW_LIKE_MODULE_CODE = "claw_like";
+
+    private static final String WEB_FETCH_PROXY_MODULE_CODE = "web_fetch_proxy";
 
     /**
      * Claw-like 应用的文件工具集（WORKSPACE 安全级别可用），与普通聊天工具严格隔离
@@ -222,6 +226,9 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
         // agentType 权限检查：在主线程中执行，确保有 SecurityContext
         User currentUser = securityUtil.getUser();
         List<String> userGroupIds = userGroupMemberService.getUserGroupIds(currentUser.getId());
+        // 网页抓取代理授权：每次请求在主线程重新判断，不依赖请求是否携带工具列表，撤销授权后下一条消息即生效
+        final boolean webFetchProxyAllowed = featureModuleAvailabilityService.isModuleAvailable(
+                WEB_FETCH_PROXY_MODULE_CODE, currentUser.getRoleType(), userGroupIds);
         // Claw-like 安全级别：在主线程解析（此时有 SecurityContext），供异步段按级别确定工具集与提示词
         final int clawLevel;
         // Claw-like 审批模式：空或非法值按 AUTO（自动审批）处理
@@ -539,7 +546,7 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     var toolCallbacks = CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())
                             ? agenticToolResolver.resolveToolCallbacks(enabledTools,
                                     clawApprovalJudgeService, clawApprovalPendingManager)
-                            : agenticToolResolver.resolveToolCallbacks(enabledTools);
+                            : agenticToolResolver.resolveToolCallbacks(enabledTools, webFetchProxyAllowed);
                     ToolCallingManager observableManager = new ObservableToolCallingManager(
                             ToolCallingManager.builder()
                                     .toolCallbackResolver(new StaticToolCallbackResolver(Arrays.asList(toolCallbacks)))
@@ -565,6 +572,8 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                     MemoryTools.setContext(userId, vo.getAgentType());
                     // 设置 RAG 知识库工具上下文（scope + libraryIds）
                     ragKnowledgeBaseTool.setContext(vo.getRagLibraryIds(), userId);
+                    // 设置网页抓取工具上下文（userId + 代理授权）
+                    WebFetch.setContext(userId, webFetchProxyAllowed);
                     // 设置 Claw-like 工具上下文（userId + 安全级别 + 审批模式 + SSE emitter + 超时中止回调）
                     if (CLAW_LIKE_AGENT_TYPE.equals(vo.getAgentType())) {
                         ClawToolContext.setContext(userId, clawLevel, clawApprovalMode.getCode(), liveStream::publish, abortStream);
@@ -617,6 +626,8 @@ public class AgenticChatAppServiceImpl implements AgenticChatAppService {
                         MemoryTools.clearContext();
                         RagKnowledgeBaseTool.clearContext();
                         BochaWebSearch.clearContext();
+                        DeepseekWebSearch.clearContext();
+                        WebFetch.clearContext();
                         ClawToolContext.clearContext();
                     }
                 }

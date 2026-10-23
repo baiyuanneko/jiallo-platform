@@ -41,6 +41,7 @@ interface ModuleInfo {
 const moduleList: ModuleInfo[] = [
   { code: 'rag_knowledge_base', label: 'RAG 知识库', desc: 'RAG 知识库管理与检索' },
   { code: 'claw_like', label: 'Claw-like', desc: '内置 Shell 与文件工具的编码智能体' },
+  { code: 'web_fetch_proxy', label: '网页抓取代理', desc: '允许 AI 在抓取网页时选择通过代理访问' },
 ]
 
 const tableLoading = ref(false)

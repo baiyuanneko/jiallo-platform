@@ -441,6 +441,22 @@ export interface TgBotConfig {
   chatIdMode: TgBotChatIdMode
   whitelistChatIds: string
   blacklistChatIds: string
+  /** 功能：消息记录（写入 tg_chat_log） */
+  chatLogEnabled: boolean
+  /** 功能：网络搜索 /websearch */
+  webSearchEnabled: boolean
+  /** 功能：智能问答 /chat */
+  chatEnabled: boolean
+  /** 功能：活跃排行 /rank（依赖消息记录） */
+  rankEnabled: boolean
+  /** /chat 使用的模型 ID */
+  chatModelId: string
+  /** /chat 自定义系统提示词，为空使用内置提示词 */
+  chatSystemPrompt: string
+  /** 机器人名称（/help、/about 中展示），为空使用默认值 */
+  botName: string
+  /** 机器人更新日期（/help、/about 中展示），为空使用默认值 */
+  botUpdateDate: string
 }
 
 export type RTgBotConfig = ApiResponse<TgBotConfig>

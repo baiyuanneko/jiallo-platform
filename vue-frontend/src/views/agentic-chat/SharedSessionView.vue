@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons-vue'
 import { getSharedSessionDetailApi, getModelIconUrl } from '@/api/apiChat'
@@ -49,6 +49,8 @@ function parseJsonArray<T>(raw: string | null): T[] {
 
 interface ToolRound {
   reasoningContent: string | null
+  /** 该轮工具调用前的叙述文本 */
+  textContent: string | null
   toolCalls: PersistedToolCall[]
   toolResults: PersistedToolResult[]
 }
@@ -86,6 +88,34 @@ watch(modelIconSrc, () => {
   modelIconFailed.value = false
 })
 
+// 代码块复制按钮（渲染自 renderMarkdown 的 .copy-btn）采用 document 委托点击
+function onCopyBtnClick(e: MouseEvent) {
+  const btn = (e.target as HTMLElement).closest('.copy-btn') as HTMLElement | null
+  if (!btn) return
+  const pre = btn.closest('pre.hljs')
+  if (!pre) return
+  const code = pre.querySelector('code')
+  if (!code) return
+  const text = code.textContent || ''
+  const label = btn.querySelector('span')
+  if (!label) return
+  navigator.clipboard.writeText(text).then(() => {
+    label.textContent = '已复制'
+    setTimeout(() => { label.textContent = '复制' }, 2000)
+  }).catch(() => {
+    label.textContent = '复制失败'
+    setTimeout(() => { label.textContent = '复制' }, 2000)
+  })
+}
+
+onMounted(() => {
+  document.addEventListener('click', onCopyBtnClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onCopyBtnClick)
+})
+
 const lastAssistantTurnId = computed(() => {
   const assistantTurns = chatTurns.value.filter((t) => t.type === 'assistant')
   return assistantTurns[assistantTurns.length - 1]?.id || ''
@@ -120,34 +150,48 @@ const chatTurns = computed<ChatTurn[]>(() => {
         const cur = messages[i]!
         if (cur.messageType === MessageType.USER) break
 
-        if (cur.messageType === MessageType.ASSISTANT && cur.textContent) {
-          textContent = cur.textContent
-          reasoningContent = cur.reasoningContent
-          turnId = cur.id
-          createTime = cur.createTime
-          i++
-          break
-        }
-
+        // 工具调用轮：textContent 是该轮叙述文本，跟随本轮工具块展示，不终止本轮合并
         if (cur.messageType === MessageType.ASSISTANT && cur.toolContent) {
           const calls = parseJsonArray<PersistedToolCall>(cur.toolContent)
           const roundReasoning = cur.reasoningContent
+          const roundText = cur.textContent
           turnId = cur.id
           i++
 
           if (i < messages.length && messages[i]!.messageType === MessageType.TOOL_RESPONSE) {
             const results = parseJsonArray<PersistedToolResult>(messages[i]!.toolContent)
-            toolRounds.push({ reasoningContent: roundReasoning, toolCalls: calls, toolResults: results })
+            toolRounds.push({ reasoningContent: roundReasoning, textContent: roundText, toolCalls: calls, toolResults: results })
             i++
           } else {
-            toolRounds.push({ reasoningContent: roundReasoning, toolCalls: calls, toolResults: [] })
+            toolRounds.push({ reasoningContent: roundReasoning, textContent: roundText, toolCalls: calls, toolResults: [] })
           }
+          continue
+        }
+
+        // 纯文本 ASSISTANT：仅当它是本轮最后一条（其后是 USER 或列表结束）时才是最终回答，
+        // 否则只是工具轮之间的中途叙述，并入轮次展示
+        if (cur.messageType === MessageType.ASSISTANT && cur.textContent) {
+          const isLastOfTurn =
+            i + 1 >= messages.length || messages[i + 1]!.messageType === MessageType.USER
+          if (isLastOfTurn) {
+            textContent = cur.textContent
+            reasoningContent = cur.reasoningContent
+            turnId = cur.id
+            createTime = cur.createTime
+            i++
+            break
+          }
+          toolRounds.push({ reasoningContent: cur.reasoningContent, textContent: cur.textContent, toolCalls: [], toolResults: [] })
+          turnId = cur.id
+          i++
           continue
         }
 
         if (cur.messageType === MessageType.TOOL_RESPONSE) {
           const results = parseJsonArray<PersistedToolResult>(cur.toolContent)
-          toolRounds.push({ reasoningContent: null, toolCalls: [], toolResults: results })
+          if (results.length > 0) {
+            toolRounds.push({ reasoningContent: null, textContent: null, toolCalls: [], toolResults: results })
+          }
           i++
           continue
         }
@@ -227,11 +271,23 @@ function formatTime(dateStr: string): string {
             class="shared-session__assistant-turn"
           >
             <div class="shared-session__avatar shared-session__avatar--assistant">
-              <RobotOutlined />
+              <img
+                v-if="modelIconSrc && !modelIconFailed"
+                :src="modelIconSrc"
+                alt="AI"
+                class="shared-session__avatar-model-icon"
+                @error="modelIconFailed = true"
+              />
+              <RobotOutlined v-else />
             </div>
             <div class="shared-session__assistant-body">
               <div class="shared-session__bubble shared-session__bubble--assistant">
               <template v-for="(round, rIdx) in turn.assistantTurn.toolRounds" :key="rIdx">
+                <div
+                  v-if="round.textContent"
+                  class="shared-session__markdown"
+                  v-html="renderMarkdown(round.textContent)"
+                />
                 <ReasoningBlock v-if="round.reasoningContent" :content="round.reasoningContent" />
                 <div class="shared-session__tool-round">
                   <ToolCallBlock
@@ -415,6 +471,14 @@ function formatTime(dateStr: string): string {
   background: #ffffff;
   color: #8c8c8c;
   border: 1px solid #f0f0f0;
+  overflow: hidden;
+}
+
+.shared-session__avatar-model-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
 }
 
 .shared-session__bubble {
@@ -513,11 +577,48 @@ function formatTime(dateStr: string): string {
 .shared-session__markdown :deep(pre) {
   background: #1e1e1e;
   color: #d4d4d4;
-  padding: 12px 16px;
+  padding: 0;
   border-radius: 8px;
-  overflow-x: auto;
+  overflow: hidden;
   font-size: 13px;
   margin: 8px 0;
+}
+
+.shared-session__markdown :deep(.code-toolbar) {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 4px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.shared-session__markdown :deep(.copy-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  color: #c8c8c8;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.5;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.shared-session__markdown :deep(.copy-btn:hover) {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.shared-session__markdown :deep(pre code) {
+  display: block;
+  padding: 12px 16px;
+  overflow-x: auto;
 }
 
 .shared-session__markdown :deep(code) {
