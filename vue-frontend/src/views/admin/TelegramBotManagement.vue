@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { SaveOutlined } from '@ant-design/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { SaveOutlined, PlusOutlined, DeleteOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import { adminGetTgBotConfigApi, adminSetTgBotConfigApi, adminListLlmModelsApi } from '@/api/apiAdmin'
-import type { TgBotConfig, TgBotChatIdMode, LlmModel } from '@/types/admin'
+import type { TgBotConfig, TgBotChatIdMode, LlmModel, TgBotChatFeatureOverride } from '@/types/admin'
 import { ui } from '@/utils/ui'
 
 const loading = ref(false)
@@ -35,6 +35,146 @@ const modelsLoading = ref(false)
 watch(chatLogEnabled, (value) => {
   if (!value) rankEnabled.value = false
 })
+
+// ==================== ChatID 特定配置 ====================
+
+/** 单项功能在 ChatID 特定配置中的取值：跟随全局 / 强制开启 / 强制关闭 */
+type OverrideState = 'inherit' | 'on' | 'off'
+
+type FeatureKey = 'chatLog' | 'webSearch' | 'chat' | 'rank'
+
+interface OverrideRow {
+  key: number
+  chatId: string
+  remark: string
+  chatLog: OverrideState
+  webSearch: OverrideState
+  chat: OverrideState
+  rank: OverrideState
+}
+
+const featureColumns: { key: FeatureKey; label: string }[] = [
+  { key: 'chatLog', label: '消息记录' },
+  { key: 'webSearch', label: '网络搜索' },
+  { key: 'chat', label: '智能问答' },
+  { key: 'rank', label: '活跃排行' },
+]
+
+const overrideRows = ref<OverrideRow[]>([])
+let overrideRowKey = 0
+
+function toState(value: boolean | null | undefined): OverrideState {
+  if (value === true) return 'on'
+  if (value === false) return 'off'
+  return 'inherit'
+}
+
+function fromState(state: OverrideState): boolean | null {
+  if (state === 'on') return true
+  if (state === 'off') return false
+  return null
+}
+
+function globalValue(key: FeatureKey): boolean {
+  switch (key) {
+    case 'chatLog':
+      return chatLogEnabled.value
+    case 'webSearch':
+      return webSearchEnabled.value
+    case 'chat':
+      return chatEnabled.value
+    case 'rank':
+      return chatLogEnabled.value && rankEnabled.value
+  }
+}
+
+function resolveState(state: OverrideState, global: boolean): boolean {
+  return state === 'inherit' ? global : state === 'on'
+}
+
+/** 该 ChatID 最终生效的功能（与后端 Settings.featuresFor 规则一致，排行依赖最终生效的消息记录） */
+function effectiveValue(row: OverrideRow, key: FeatureKey): boolean {
+  const chatLog = resolveState(row.chatLog, globalValue('chatLog'))
+  if (key === 'chatLog') return chatLog
+  if (key === 'rank') return chatLog && resolveState(row.rank, globalValue('rank'))
+  return resolveState(row[key], globalValue(key))
+}
+
+function stateOptions(key: FeatureKey) {
+  return [
+    { value: 'inherit', label: `跟随全局（${globalValue(key) ? '开' : '关'}）` },
+    { value: 'on', label: '开启' },
+    { value: 'off', label: '关闭' },
+  ]
+}
+
+function parseIdList(raw: string): Set<string> {
+  return new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== ''),
+  )
+}
+
+const whitelistSet = computed(() => parseIdList(whitelistChatIds.value))
+const blacklistSet = computed(() => parseIdList(blacklistChatIds.value))
+
+/** 按当前黑白名单判断该 ChatID 是否被允许（不被允许时特定配置不生效） */
+function isRowChatAllowed(row: OverrideRow): boolean {
+  const id = row.chatId.trim()
+  if (!id) return true
+  return chatIdMode.value === 'whitelist' ? whitelistSet.value.has(id) : !blacklistSet.value.has(id)
+}
+
+/** 全局或任一 ChatID 开启了智能问答时展示 /chat 模型与提示词配置 */
+const chatUsedAnywhere = computed(
+  () => chatEnabled.value || overrideRows.value.some((row) => effectiveValue(row, 'chat')),
+)
+
+function addOverrideRow() {
+  overrideRows.value.push({
+    key: ++overrideRowKey,
+    chatId: '',
+    remark: '',
+    chatLog: 'inherit',
+    webSearch: 'inherit',
+    chat: 'inherit',
+    rank: 'inherit',
+  })
+}
+
+function removeOverrideRow(key: number) {
+  overrideRows.value = overrideRows.value.filter((row) => row.key !== key)
+}
+
+function toOverrideRows(list: TgBotChatFeatureOverride[] | undefined): OverrideRow[] {
+  return (list ?? []).map((item) => ({
+    key: ++overrideRowKey,
+    chatId: item.chatId ?? '',
+    remark: item.remark ?? '',
+    chatLog: toState(item.chatLogEnabled),
+    webSearch: toState(item.webSearchEnabled),
+    chat: toState(item.chatEnabled),
+    rank: toState(item.rankEnabled),
+  }))
+}
+
+/** 校验 ChatID 特定配置，返回错误信息；通过返回 null */
+function validateOverrideRows(): string | null {
+  const seen = new Set<string>()
+  for (const row of overrideRows.value) {
+    const id = row.chatId.trim()
+    if (!/^-?\d{1,15}$/.test(id)) {
+      return `ChatID 特定配置中「${id || '（空）'}」不是有效的 ChatID`
+    }
+    if (seen.has(id)) {
+      return `ChatID 特定配置中存在重复的 ChatID：${id}`
+    }
+    seen.add(id)
+  }
+  return null
+}
 
 async function fetchModels() {
   modelsLoading.value = true
@@ -73,6 +213,7 @@ async function fetchConfig() {
       chatSystemPrompt.value = data.chatSystemPrompt ?? ''
       botName.value = data.botName || DEFAULT_BOT_NAME
       botUpdateDate.value = data.botUpdateDate || DEFAULT_BOT_UPDATE_DATE
+      overrideRows.value = toOverrideRows(data.chatFeatureOverrides)
     }
   } catch (error) {
     console.error('获取 Telegram 机器人配置失败:', error)
@@ -82,6 +223,11 @@ async function fetchConfig() {
 }
 
 async function handleSave() {
+  const overrideError = validateOverrideRows()
+  if (overrideError) {
+    ui.error(overrideError)
+    return
+  }
   saveLoading.value = true
   try {
     const data: TgBotConfig = {
@@ -98,6 +244,14 @@ async function handleSave() {
       chatSystemPrompt: chatSystemPrompt.value,
       botName: botName.value.trim(),
       botUpdateDate: botUpdateDate.value.trim(),
+      chatFeatureOverrides: overrideRows.value.map((row) => ({
+        chatId: row.chatId.trim(),
+        remark: row.remark.trim(),
+        chatLogEnabled: fromState(row.chatLog),
+        webSearchEnabled: fromState(row.webSearch),
+        chatEnabled: fromState(row.chat),
+        rankEnabled: fromState(row.rank),
+      })),
     }
     await adminSetTgBotConfigApi(data)
     ui.success('保存成功，机器人将在约 10～20 秒内按新配置重载')
@@ -213,7 +367,8 @@ onMounted(() => {
         </div>
 
         <div class="form-item">
-          <div class="form-label">功能列表</div>
+          <div class="form-label">全局功能开关</div>
+          <div class="form-hint">适用于所有允许的聊天；命令菜单按全局开关生成。可在下方 ChatID 特定配置中按聊天覆盖</div>
           <div class="feature-list">
             <div class="feature-item">
               <a-switch v-model:checked="chatLogEnabled" size="small" />
@@ -256,7 +411,56 @@ onMounted(() => {
           </div>
         </div>
 
-        <template v-if="chatEnabled">
+        <div class="form-item">
+          <div class="form-label">ChatID 特定配置</div>
+          <div class="form-hint">
+            为指定 ChatID 覆盖全局功能开关，未设置的项跟随全局；不受黑白名单豁免（被过滤的聊天配置不生效）。
+            在目标聊天中发送 <code>/jiallo_chatid</code> 可获取其 ChatID（该命令无视黑白名单）。
+            对当前聊天未启用的命令会回复「此命令对于当前聊天未启用」
+          </div>
+          <div class="override-list">
+            <div v-for="row in overrideRows" :key="row.key" class="override-row">
+              <div class="override-row-head">
+                <a-input
+                  v-model:value="row.chatId"
+                  placeholder="ChatID，如 -1001234567890"
+                  :maxlength="20"
+                  style="width: 220px"
+                />
+                <a-input v-model:value="row.remark" placeholder="备注（可选）" :maxlength="64" style="width: 200px" />
+                <a-tooltip v-if="row.chatId.trim() && !isRowChatAllowed(row)" title="该 ChatID 当前不在黑白名单允许范围内，配置不会生效">
+                  <WarningOutlined class="override-warning" />
+                </a-tooltip>
+                <a-button type="text" danger @click="removeOverrideRow(row.key)">
+                  <template #icon><DeleteOutlined /></template>
+                </a-button>
+              </div>
+              <div class="override-features">
+                <div v-for="col in featureColumns" :key="col.key" class="override-feature">
+                  <span class="override-feature-label">{{ col.label }}</span>
+                  <a-select
+                    v-model:value="row[col.key]"
+                    :options="stateOptions(col.key)"
+                    :disabled="col.key === 'rank' && !effectiveValue(row, 'chatLog')"
+                    size="small"
+                    style="width: 150px"
+                  />
+                  <a-tag :color="effectiveValue(row, col.key) ? 'success' : 'default'" class="override-effective">
+                    {{ effectiveValue(row, col.key) ? '生效：开' : '生效：关' }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+            <div>
+              <a-button type="dashed" @click="addOverrideRow">
+                <template #icon><PlusOutlined /></template>
+                添加 ChatID
+              </a-button>
+            </div>
+          </div>
+        </div>
+
+        <template v-if="chatUsedAnywhere">
           <div class="form-item">
             <div class="form-label">/chat 使用模型</div>
             <div class="form-control">
@@ -382,6 +586,65 @@ onMounted(() => {
 
 .form-actions {
   padding-top: 4px;
+}
+
+.form-hint code {
+  font-size: 12px;
+  color: #595959;
+  background: #f5f5f5;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.override-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.override-row {
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.override-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.override-warning {
+  color: #faad14;
+  font-size: 16px;
+}
+
+.override-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px 16px;
+}
+
+.override-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.override-feature-label {
+  width: 56px;
+  font-size: 13px;
+  color: #595959;
+  flex-shrink: 0;
+}
+
+.override-effective {
+  margin-inline-end: 0;
 }
 
 .feature-list {

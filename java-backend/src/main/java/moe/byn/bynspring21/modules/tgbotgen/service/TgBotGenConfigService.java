@@ -1,17 +1,29 @@
 package moe.byn.bynspring21.modules.tgbotgen.service;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson2.JSONWriter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import moe.byn.bynspring21.exception.BynBaseException;
 import moe.byn.bynspring21.service.SysConfigService;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * Telegram Bot 的运行时配置，存 sys_config（key 命名沿用项目 camelCase 风格）。
- * 机器人启动/热重载时通过 loadSettings() 读取一份快照，运行期间不再逐条消息查库
+ * 机器人启动/热重载时通过 loadSettings() 读取一份快照，运行期间不再逐条消息查库。
+ * 功能开关分两层：全局功能开关 + ChatID 特定配置（按聊天覆盖全局，未设置项跟随全局）
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TgBotGenConfigService {
@@ -30,6 +42,9 @@ public class TgBotGenConfigService {
     public static final String KEY_CHAT_SYSTEM_PROMPT = "tgBotChatSystemPrompt";
     public static final String KEY_BOT_NAME = "tgBotName";
     public static final String KEY_BOT_UPDATE_DATE = "tgBotUpdateDate";
+    public static final String KEY_CHAT_FEATURE_OVERRIDES = "tgBotChatFeatureOverrides";
+
+    private static final int REMARK_MAX_LENGTH = 64;
 
     /** /help、/about 中展示的机器人名称与更新日期，未配置时使用默认值 */
     public static final String DEFAULT_BOT_NAME = "Telegram 智能机器人";
@@ -61,7 +76,8 @@ public class TgBotGenConfigService {
             String chatModelId,
             String chatSystemPrompt,
             String botName,
-            String botUpdateDate
+            String botUpdateDate,
+            Map<Long, ChatFeatureOverride> chatFeatureOverrides
     ) {
         /**
          * ChatId 过滤：白名单模式仅名单内放行（空名单=全部拒绝），黑名单模式仅名单外放行。
@@ -75,6 +91,53 @@ public class TgBotGenConfigService {
             }
             return !blacklistChatIds.contains(chatId);
         }
+
+        /**
+         * 全局功能开关（命令菜单按此生成）
+         */
+        public Features globalFeatures() {
+            return new Features(chatLogEnabled, webSearchEnabled, chatEnabled, rankEnabled && chatLogEnabled);
+        }
+
+        /**
+         * 指定聊天最终生效的功能：ChatID 特定配置中显式开启/关闭的项覆盖全局开关，未设置（null）的项跟随全局；
+         * 活跃排行依赖该聊天最终生效的消息记录
+         */
+        public Features featuresFor(Long chatId) {
+            ChatFeatureOverride override = chatId != null ? chatFeatureOverrides.get(chatId) : null;
+            if (override == null) {
+                return globalFeatures();
+            }
+            boolean chatLog = pick(override.chatLogEnabled(), chatLogEnabled);
+            return new Features(
+                    chatLog,
+                    pick(override.webSearchEnabled(), webSearchEnabled),
+                    pick(override.chatEnabled(), chatEnabled),
+                    chatLog && pick(override.rankEnabled(), rankEnabled));
+        }
+
+        private static boolean pick(Boolean override, boolean global) {
+            return override != null ? override : global;
+        }
+    }
+
+    /**
+     * 某个聊天最终生效的功能
+     */
+    public record Features(boolean chatLogEnabled, boolean webSearchEnabled, boolean chatEnabled, boolean rankEnabled) {
+    }
+
+    /**
+     * ChatID 特定功能配置：各功能为 null 表示跟随全局，true/false 表示对该聊天强制开启/关闭
+     */
+    public record ChatFeatureOverride(
+            Long chatId,
+            String remark,
+            Boolean chatLogEnabled,
+            Boolean webSearchEnabled,
+            Boolean chatEnabled,
+            Boolean rankEnabled
+    ) {
     }
 
     /**
@@ -93,11 +156,16 @@ public class TgBotGenConfigService {
             String chatModelId,
             String chatSystemPrompt,
             String botName,
-            String botUpdateDate
+            String botUpdateDate,
+            List<ChatFeatureOverride> chatFeatureOverrides
     ) {
     }
 
     public Settings loadSettings() {
+        Map<Long, ChatFeatureOverride> overrides = new LinkedHashMap<>();
+        for (ChatFeatureOverride override : loadChatFeatureOverrides()) {
+            overrides.put(override.chatId(), override);
+        }
         return new Settings(
                 isTrue(KEY_ENABLED),
                 getRaw(KEY_TOKEN),
@@ -111,7 +179,8 @@ public class TgBotGenConfigService {
                 getRaw(KEY_CHAT_MODEL_ID),
                 getRaw(KEY_CHAT_SYSTEM_PROMPT),
                 getOrDefault(KEY_BOT_NAME, DEFAULT_BOT_NAME),
-                getOrDefault(KEY_BOT_UPDATE_DATE, DEFAULT_BOT_UPDATE_DATE));
+                getOrDefault(KEY_BOT_UPDATE_DATE, DEFAULT_BOT_UPDATE_DATE),
+                Collections.unmodifiableMap(overrides));
     }
 
     /**
@@ -131,7 +200,8 @@ public class TgBotGenConfigService {
                 getRaw(KEY_CHAT_MODEL_ID),
                 getRaw(KEY_CHAT_SYSTEM_PROMPT),
                 getOrDefault(KEY_BOT_NAME, DEFAULT_BOT_NAME),
-                getOrDefault(KEY_BOT_UPDATE_DATE, DEFAULT_BOT_UPDATE_DATE));
+                getOrDefault(KEY_BOT_UPDATE_DATE, DEFAULT_BOT_UPDATE_DATE),
+                loadChatFeatureOverrides());
     }
 
     /**
@@ -158,6 +228,74 @@ public class TgBotGenConfigService {
         // 留空保存则回落到默认值
         sysConfigService.setConfigValue(KEY_BOT_NAME, nullToEmpty(config.botName()).trim());
         sysConfigService.setConfigValue(KEY_BOT_UPDATE_DATE, nullToEmpty(config.botUpdateDate()).trim());
+        sysConfigService.setConfigValue(KEY_CHAT_FEATURE_OVERRIDES, serializeChatFeatureOverrides(config.chatFeatureOverrides()));
+    }
+
+    /**
+     * 校验并序列化 ChatID 特定配置：ChatID 必填且不可重复，备注截断至 REMARK_MAX_LENGTH
+     */
+    private static String serializeChatFeatureOverrides(List<ChatFeatureOverride> overrides) {
+        if (overrides == null || overrides.isEmpty()) {
+            return "[]";
+        }
+        Set<Long> seen = new HashSet<>();
+        JSONArray array = new JSONArray();
+        for (ChatFeatureOverride override : overrides) {
+            if (override == null || override.chatId() == null) {
+                throw new BynBaseException("ChatID 特定配置中存在未填写的 ChatID");
+            }
+            if (!seen.add(override.chatId())) {
+                throw new BynBaseException("ChatID 特定配置中存在重复的 ChatID：" + override.chatId());
+            }
+            String remark = nullToEmpty(override.remark()).trim();
+            if (remark.length() > REMARK_MAX_LENGTH) {
+                remark = remark.substring(0, REMARK_MAX_LENGTH);
+            }
+            JSONObject item = new JSONObject();
+            // ChatID 以字符串存储，避免前端 JSON 数值精度问题
+            item.put("chatId", String.valueOf(override.chatId()));
+            item.put("remark", remark);
+            item.put("chatLogEnabled", override.chatLogEnabled());
+            item.put("webSearchEnabled", override.webSearchEnabled());
+            item.put("chatEnabled", override.chatEnabled());
+            item.put("rankEnabled", override.rankEnabled());
+            array.add(item);
+        }
+        return JSON.toJSONString(array, JSONWriter.Feature.WriteNulls);
+    }
+
+    /**
+     * 读取 ChatID 特定配置，解析失败或非法条目忽略
+     */
+    private List<ChatFeatureOverride> loadChatFeatureOverrides() {
+        String raw = getRaw(KEY_CHAT_FEATURE_OVERRIDES);
+        if (raw.isEmpty()) {
+            return List.of();
+        }
+        List<ChatFeatureOverride> result = new ArrayList<>();
+        try {
+            JSONArray array = JSON.parseArray(raw);
+            for (int i = 0; i < array.size(); i++) {
+                JSONObject item = array.getJSONObject(i);
+                Long chatId;
+                try {
+                    chatId = Long.parseLong(item.getString("chatId").trim());
+                } catch (Exception e) {
+                    continue;
+                }
+                result.add(new ChatFeatureOverride(
+                        chatId,
+                        item.getString("remark"),
+                        item.getBoolean("chatLogEnabled"),
+                        item.getBoolean("webSearchEnabled"),
+                        item.getBoolean("chatEnabled"),
+                        item.getBoolean("rankEnabled")));
+            }
+        } catch (Exception e) {
+            log.warn("解析 {} 失败，ChatID 特定配置不生效", KEY_CHAT_FEATURE_OVERRIDES, e);
+            return List.of();
+        }
+        return result;
     }
 
     private String getOrDefault(String key, String defaultValue) {

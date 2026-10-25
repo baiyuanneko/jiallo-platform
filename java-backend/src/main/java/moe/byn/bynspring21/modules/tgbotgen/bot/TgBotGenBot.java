@@ -38,12 +38,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
- * Telegram 长轮询 Bot。功能按后台开关启用：
+ * Telegram 长轮询 Bot。功能按「全局功能开关 + ChatID 特定配置」逐聊天判定是否启用，未启用的命令回复未启用：
  * <ul>
  *   <li>消息记录：通过 ChatId 过滤的消息（含事件/编辑消息及机器人自身回复）写入 tg_chat_log</li>
  *   <li>/websearch [--deepseek|--bocha] &lt;内容&gt;：网页搜索，默认 DeepSeek</li>
  *   <li>/chat &lt;内容&gt;（别名 /ai、/llm）：一次性智能体问答（联网搜索、阅读网页、日期时间）</li>
  *   <li>/rank：群活跃成员排行（依赖消息记录）</li>
+ *   <li>/jiallo_chatid：回复当前 ChatID，无视黑白名单与功能开关</li>
  * </ul>
  * 长轮询回调串行执行，耗时命令统一交给有界线程池异步处理，避免阻塞后续消息的接收与记录。
  */
@@ -68,6 +69,15 @@ public class TgBotGenBot extends TelegramLongPollingBot {
 
     private static final int RANK_RECENT_DAYS = 14;
 
+    /** 命令对当前聊天未启用（全局关闭或被 ChatID 特定配置关闭）时的统一回复 */
+    private static final String COMMAND_DISABLED_REPLY = "此命令对于当前聊天未启用";
+
+    /** 获取当前 ChatID 的命令：无视黑白名单与功能开关，不进命令菜单 */
+    private static final String CHAT_ID_COMMAND = "/jiallo_chatid";
+
+    /** /jiallo_chatid 同一聊天的静默冷却时间 */
+    private static final long CHAT_ID_COMMAND_COOLDOWN_MS = 5_000;
+
     private final TgBotGenConfigService.Settings settings;
 
     private final TgChatLogService chatLogService;
@@ -80,6 +90,9 @@ public class TgBotGenBot extends TelegramLongPollingBot {
 
     /** key: command:chatId:senderId，value: 上次触发该命令的时间戳 */
     private final ConcurrentHashMap<String, Long> commandCooldowns = new ConcurrentHashMap<>();
+
+    /** key: chatId，value: 上次响应 /jiallo_chatid 的时间戳 */
+    private final ConcurrentHashMap<Long, Long> chatIdCommandTimes = new ConcurrentHashMap<>();
 
     /** 通过 getMe 异步获取的真实用户名；获取前为空，此时带 @ 后缀的命令一律忽略 */
     private volatile String resolvedUsername;
@@ -117,21 +130,23 @@ public class TgBotGenBot extends TelegramLongPollingBot {
     }
 
     /**
-     * 按已启用功能注册 Telegram 命令菜单（覆盖 BotFather 中手动设置的命令），别名不进菜单：
+     * 按全局功能开关注册 Telegram 命令菜单（覆盖 BotFather 中手动设置的命令；不考虑 ChatID 特定配置，
+     * 对当前聊天未启用的命令执行时回复未启用），别名与 /jiallo_chatid 不进菜单：
      * 默认范围（私聊等）注册已启用的 /websearch、/chat 及始终可用的 /help、/about；
      * 所有群聊范围在开启活跃排行时额外注册 /rank —— 群聊范围优先级高于默认范围且会整体替代默认菜单，
      * 因此群聊菜单需包含全部命令；未开启排行时删除群聊范围，群聊回落到默认菜单。
      * 失败只记日志，不影响机器人运行
      */
     public void registerCommands() {
+        TgBotGenConfigService.Features global = settings.globalFeatures();
         List<BotCommand> baseCommands = new ArrayList<>();
-        if (settings.webSearchEnabled()) {
+        if (global.webSearchEnabled()) {
             baseCommands.add(new BotCommand("websearch", "网络搜索（默认 DeepSeek，可加 --bocha）"));
         }
-        if (settings.chatEnabled()) {
+        if (global.chatEnabled()) {
             baseCommands.add(new BotCommand("chat", "智能问答（可联网搜索、阅读网页）"));
         }
-        boolean rankAvailable = settings.rankEnabled() && settings.chatLogEnabled();
+        boolean rankAvailable = global.rankEnabled();
         List<BotCommand> commonCommands = List.of(
                 new BotCommand("help", "查看可用命令"),
                 new BotCommand("about", "关于本机器人"));
@@ -180,7 +195,8 @@ public class TgBotGenBot extends TelegramLongPollingBot {
         }
         if (update.hasEditedMessage()) {
             Message edited = update.getEditedMessage();
-            if (settings.chatLogEnabled() && settings.isChatAllowed(edited.getChatId())) {
+            if (settings.isChatAllowed(edited.getChatId())
+                    && settings.featuresFor(edited.getChatId()).chatLogEnabled()) {
                 recordEdited(edited);
             }
             return;
@@ -189,21 +205,28 @@ public class TgBotGenBot extends TelegramLongPollingBot {
             return;
         }
         Message message = update.getMessage();
-        if (!settings.isChatAllowed(message.getChatId())) {
+        boolean allowed = settings.isChatAllowed(message.getChatId());
+        // /jiallo_chatid 无视黑白名单与功能开关，用于获取 ChatID 以配置黑白名单 / ChatID 特定配置
+        if (message.hasText() && CHAT_ID_COMMAND.equals(parseCommand(message.getText()))) {
+            handleChatIdCommand(message, allowed);
+            return;
+        }
+        if (!allowed) {
             log.debug("ChatId [{}] 不在允许范围内，忽略消息", message.getChatId());
             return;
         }
-        if (settings.chatLogEnabled()) {
+        TgBotGenConfigService.Features features = settings.featuresFor(message.getChatId());
+        if (features.chatLogEnabled()) {
             recordIncoming(message);
         }
         if (message.hasText()) {
-            handleText(message);
+            handleText(message, features);
         }
     }
 
     // ==================== 命令处理 ====================
 
-    private void handleText(Message message) {
+    private void handleText(Message message, TgBotGenConfigService.Features features) {
         String text = message.getText();
         String command = parseCommand(text);
         if (command == null) {
@@ -212,20 +235,44 @@ public class TgBotGenBot extends TelegramLongPollingBot {
         String[] parts = text.strip().split("\\s+", 2);
         String args = parts.length > 1 ? parts[1].strip() : "";
         switch (command) {
-            case "/start", "/help" -> sendText(message, message.getMessageId(), buildHelpText());
-            case "/about" -> sendText(message, message.getMessageId(), buildAboutText());
-            case "/websearch" -> handleWebSearch(message, args);
-            case "/chat", "/ai", "/llm" -> handleChat(message, args);
-            case "/rank" -> handleRank(message);
+            case "/start", "/help" -> sendText(message, message.getMessageId(), buildHelpText(features));
+            case "/about" -> sendText(message, message.getMessageId(), buildAboutText(features));
+            case "/websearch" -> handleWebSearch(message, args, features);
+            case "/chat", "/ai", "/llm" -> handleChat(message, args, features);
+            case "/rank" -> handleRank(message, features);
             default -> {
                 // 未知命令（可能属于其他机器人），忽略
             }
         }
     }
 
-    private void handleWebSearch(Message message, String args) {
-        if (!settings.webSearchEnabled()) {
-            sendText(message, message.getMessageId(), "网络搜索功能未启用");
+    /**
+     * 回复当前 ChatID。同一聊天 CHAT_ID_COMMAND_COOLDOWN_MS 内重复触发静默忽略，避免在未授权聊天中被刷屏；
+     * 仅在聊天被允许且开启消息记录时记录该命令及回复
+     */
+    private void handleChatIdCommand(Message message, boolean allowed) {
+        long now = System.currentTimeMillis();
+        Long last = chatIdCommandTimes.put(message.getChatId(), now);
+        if (last != null && now - last < CHAT_ID_COMMAND_COOLDOWN_MS) {
+            return;
+        }
+        if (chatIdCommandTimes.size() > 1000) {
+            chatIdCommandTimes.values().removeIf(t -> now - t >= CHAT_ID_COMMAND_COOLDOWN_MS);
+        }
+        if (allowed && settings.featuresFor(message.getChatId()).chatLogEnabled()) {
+            recordIncoming(message);
+        }
+        String reply = "当前聊天 ChatID：" + message.getChatId();
+        if (allowed) {
+            sendText(message, message.getMessageId(), reply);
+        } else {
+            sendRaw(message.getChatId(), message.getMessageId(), reply);
+        }
+    }
+
+    private void handleWebSearch(Message message, String args, TgBotGenConfigService.Features features) {
+        if (!features.webSearchEnabled()) {
+            sendText(message, message.getMessageId(), COMMAND_DISABLED_REPLY);
             return;
         }
         TgBotWebSearchService.Provider provider = TgBotWebSearchService.Provider.DEEPSEEK;
@@ -254,9 +301,9 @@ public class TgBotGenBot extends TelegramLongPollingBot {
         runAsync(message, "🔍 正在搜索…", () -> webSearchService.search(finalProvider, finalQuery));
     }
 
-    private void handleChat(Message message, String args) {
-        if (!settings.chatEnabled()) {
-            sendText(message, message.getMessageId(), "智能问答功能未启用");
+    private void handleChat(Message message, String args, TgBotGenConfigService.Features features) {
+        if (!features.chatEnabled()) {
+            sendText(message, message.getMessageId(), COMMAND_DISABLED_REPLY);
             return;
         }
         if (args.isEmpty()) {
@@ -270,13 +317,10 @@ public class TgBotGenBot extends TelegramLongPollingBot {
                 () -> agentService.chat(settings.chatModelId(), settings.chatSystemPrompt(), args));
     }
 
-    private void handleRank(Message message) {
-        if (!settings.rankEnabled()) {
-            sendText(message, message.getMessageId(), "活跃排行功能未启用");
-            return;
-        }
-        if (!settings.chatLogEnabled()) {
-            sendText(message, message.getMessageId(), "活跃排行需要先开启消息记录功能");
+    private void handleRank(Message message, TgBotGenConfigService.Features features) {
+        // features.rankEnabled() 已包含「该聊天开启消息记录」的依赖
+        if (!features.rankEnabled()) {
+            sendText(message, message.getMessageId(), COMMAND_DISABLED_REPLY);
             return;
         }
         Chat chat = message.getChat();
@@ -314,15 +358,15 @@ public class TgBotGenBot extends TelegramLongPollingBot {
         return settings.botName() + "（更新日期：" + settings.botUpdateDate() + "）";
     }
 
-    private String buildHelpText() {
+    private String buildHelpText(TgBotGenConfigService.Features features) {
         List<String> lines = new ArrayList<>();
-        if (settings.webSearchEnabled()) {
+        if (features.webSearchEnabled()) {
             lines.add("/websearch [--deepseek|--bocha] <内容> — 网络搜索（默认 DeepSeek）");
         }
-        if (settings.chatEnabled()) {
+        if (features.chatEnabled()) {
             lines.add("/chat <内容> — 智能问答（可联网搜索、阅读网页；别名 /ai、/llm）");
         }
-        if (settings.rankEnabled() && settings.chatLogEnabled()) {
+        if (features.rankEnabled()) {
             lines.add("/rank — 群活跃成员排行");
         }
         lines.add("/help — 查看可用命令");
@@ -330,23 +374,23 @@ public class TgBotGenBot extends TelegramLongPollingBot {
         return buildBotHeader() + "\n\n可用命令：\n" + String.join("\n", lines);
     }
 
-    private String buildAboutText() {
-        List<String> features = new ArrayList<>();
-        if (settings.webSearchEnabled()) {
-            features.add("网络搜索");
+    private String buildAboutText(TgBotGenConfigService.Features features) {
+        List<String> enabled = new ArrayList<>();
+        if (features.webSearchEnabled()) {
+            enabled.add("网络搜索");
         }
-        if (settings.chatEnabled()) {
-            features.add("智能问答");
+        if (features.chatEnabled()) {
+            enabled.add("智能问答");
         }
-        if (settings.rankEnabled() && settings.chatLogEnabled()) {
-            features.add("活跃排行");
+        if (features.rankEnabled()) {
+            enabled.add("活跃排行");
         }
-        if (settings.chatLogEnabled()) {
-            features.add("消息记录");
+        if (features.chatLogEnabled()) {
+            enabled.add("消息记录");
         }
         return settings.botName() + "\n"
                 + "更新日期：" + settings.botUpdateDate() + "\n"
-                + "已启用功能：" + (features.isEmpty() ? "无" : String.join("、", features)) + "\n"
+                + "当前聊天已启用功能：" + (enabled.isEmpty() ? "无" : String.join("、", enabled)) + "\n"
                 + "发送 /help 查看可用命令";
     }
 
@@ -522,7 +566,7 @@ public class TgBotGenBot extends TelegramLongPollingBot {
     }
 
     private void recordOutgoing(Chat chat, Integer messageId, String text) {
-        if (!settings.chatLogEnabled()) {
+        if (!settings.featuresFor(chat.getId()).chatLogEnabled()) {
             return;
         }
         TgChatLog chatLog = new TgChatLog();

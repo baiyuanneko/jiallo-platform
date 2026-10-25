@@ -1,7 +1,9 @@
 package moe.byn.bynspring21.entity.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -675,5 +677,36 @@ public class BusiAdminVo {
 
         @Schema(description = "机器人更新日期（/help、/about 中展示），为空使用默认值", example = "2026-10-24")
         private String botUpdateDate;
+
+        @Schema(description = "ChatID 特定配置：按聊天覆盖全局功能开关")
+        @Valid
+        private List<TgBotChatFeatureOverrideVo> chatFeatureOverrides;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Telegram 机器人 ChatID 特定功能配置：各功能为 null 表示跟随全局，true/false 表示对该聊天强制开启/关闭")
+    public static class TgBotChatFeatureOverrideVo {
+        @Schema(description = "ChatID（字符串，避免前端数值精度问题）", example = "-1001234567890", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotBlank(message = "ChatID 不能为空")
+        @Pattern(regexp = "^\\s*-?\\d{1,15}\\s*$", message = "ChatID 必须为整数")
+        private String chatId;
+
+        @Schema(description = "备注名")
+        private String remark;
+
+        @Schema(description = "消息记录：null-跟随全局，true-开启，false-关闭")
+        private Boolean chatLogEnabled;
+
+        @Schema(description = "网络搜索：null-跟随全局，true-开启，false-关闭")
+        private Boolean webSearchEnabled;
+
+        @Schema(description = "智能问答：null-跟随全局，true-开启，false-关闭")
+        private Boolean chatEnabled;
+
+        @Schema(description = "活跃排行：null-跟随全局，true-开启，false-关闭（依赖该聊天最终生效的消息记录）")
+        private Boolean rankEnabled;
     }
 }

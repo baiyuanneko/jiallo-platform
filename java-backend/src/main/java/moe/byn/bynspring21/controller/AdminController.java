@@ -557,6 +557,16 @@ public class AdminController {
                 .chatSystemPrompt(config.chatSystemPrompt())
                 .botName(config.botName())
                 .botUpdateDate(config.botUpdateDate())
+                .chatFeatureOverrides(config.chatFeatureOverrides().stream()
+                        .map(o -> BusiAdminVo.TgBotChatFeatureOverrideVo.builder()
+                                .chatId(String.valueOf(o.chatId()))
+                                .remark(o.remark())
+                                .chatLogEnabled(o.chatLogEnabled())
+                                .webSearchEnabled(o.webSearchEnabled())
+                                .chatEnabled(o.chatEnabled())
+                                .rankEnabled(o.rankEnabled())
+                                .build())
+                        .toList())
                 .build());
     }
 
@@ -581,7 +591,16 @@ public class AdminController {
                 vo.getChatModelId(),
                 vo.getChatSystemPrompt(),
                 vo.getBotName(),
-                vo.getBotUpdateDate()));
+                vo.getBotUpdateDate(),
+                vo.getChatFeatureOverrides() == null ? List.of() : vo.getChatFeatureOverrides().stream()
+                        .map(o -> new TgBotGenConfigService.ChatFeatureOverride(
+                                Long.parseLong(o.getChatId().trim()),
+                                o.getRemark(),
+                                o.getChatLogEnabled(),
+                                o.getWebSearchEnabled(),
+                                o.getChatEnabled(),
+                                o.getRankEnabled()))
+                        .toList()));
         tgBotGenManager.reload();
         return R.ok();
     }

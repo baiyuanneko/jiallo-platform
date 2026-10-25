@@ -457,6 +457,19 @@ export interface TgBotConfig {
   botName: string
   /** 机器人更新日期（/help、/about 中展示），为空使用默认值 */
   botUpdateDate: string
+  /** ChatID 特定配置：按聊天覆盖全局功能开关 */
+  chatFeatureOverrides: TgBotChatFeatureOverride[]
+}
+
+/** ChatID 特定功能配置：各功能为 null 表示跟随全局，true/false 表示对该聊天强制开启/关闭 */
+export interface TgBotChatFeatureOverride {
+  /** ChatID（字符串，避免数值精度问题） */
+  chatId: string
+  remark: string
+  chatLogEnabled: boolean | null
+  webSearchEnabled: boolean | null
+  chatEnabled: boolean | null
+  rankEnabled: boolean | null
 }
 
 export type RTgBotConfig = ApiResponse<TgBotConfig>
